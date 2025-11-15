@@ -67,7 +67,9 @@ export class ToolDiscovery {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.log(chalk.red(`✗ Failed to connect to ${serverName}: ${message}`));
+      console.log(
+        chalk.red(`✗ Failed to connect to ${serverName}: ${message}`)
+      );
 
       return {
         serverName,

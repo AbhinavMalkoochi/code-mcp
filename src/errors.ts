@@ -18,4 +18,3 @@ export class GenerationError extends Error {
     this.name = "GenerationError";
   }
 }
-

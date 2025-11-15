@@ -133,7 +133,7 @@ export async function ${functionName}(input: ${inputInterfaceName}): Promise<${r
   async generateRuntimeClient(outputDir: string): Promise<void> {
     const clientPath = join(outputDir, "client.ts");
 
-const clientCode = `import { MCPClient } from "../src/client/mcpClient.js";
+    const clientCode = `import { MCPClient } from "../src/client/mcpClient.js";
 import { ConfigParser } from "../src/config/parser.js";
 import { ConnectionError } from "../src/errors.js";
 
@@ -247,8 +247,7 @@ export async function callMCPTool<TResponse = unknown>(
     try {
       await mkdir(dirPath, { recursive: true });
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
       throw new GenerationError(
         `Failed to create directory "${dirPath}": ${message}`,
         error instanceof Error ? { cause: error } : undefined
@@ -256,12 +255,14 @@ export async function callMCPTool<TResponse = unknown>(
     }
   }
 
-  private async writeFileSafe(filePath: string, contents: string): Promise<void> {
+  private async writeFileSafe(
+    filePath: string,
+    contents: string
+  ): Promise<void> {
     try {
       await writeFile(filePath, contents, "utf-8");
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
       throw new GenerationError(
         `Failed to write file "${filePath}": ${message}`,
         error instanceof Error ? { cause: error } : undefined
