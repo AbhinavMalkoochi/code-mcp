@@ -61,21 +61,21 @@ export class ToolDiscovery {
         chalk.green(`✓ Found ${tools.length} tool(s) in ${serverName}`)
       );
 
-      await client.close();
-
       return {
         serverName,
         tools,
       };
     } catch (error) {
-      console.log(chalk.red(`✗ Failed to connect to ${serverName}: ${error}`));
-      await client.close();
+      const message = error instanceof Error ? error.message : String(error);
+      console.log(chalk.red(`✗ Failed to connect to ${serverName}: ${message}`));
 
       return {
         serverName,
         tools: [],
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
       };
+    } finally {
+      await client.close().catch(() => undefined);
     }
   }
 

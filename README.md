@@ -7,7 +7,7 @@ Generate type-safe TypeScript wrappers for Model Context Protocol (MCP) tools. C
 - 🔍 **Auto-discovery** - Connects to MCP servers and discovers all available tools
 - 🎯 **Type-safe** - Generates TypeScript interfaces from JSON schemas
 - 📦 **Clean structure** - Organized, deterministic folder structure
-- 🌐 **STDIO & HTTP** - Supports both transport protocols
+- 🔒 **Secure STDIO** - Hardened STDIO transport with strict validation
 - 👀 **Watch mode** - Auto-regenerate on config changes
 - 🎨 **Beautiful CLI** - Colorful output with progress indicators
 
@@ -59,36 +59,17 @@ Create `mcp.config.json`:
     "fetch": {
       "command": "uvx",
       "args": ["mcp-server-fetch"]
-    },
-    "context7": {
-      "url": "https://mcp.context7.com/mcp",
-      "headers": {
-        "CONTEXT7_API_KEY": "YOUR_API_KEY"
-      }
     }
   }
 }
 ```
 
-### Server Types
-
-**STDIO Servers:**
+### STDIO Servers
 
 ```json
 {
   "command": "uvx",
   "args": ["mcp-server-name"]
-}
-```
-
-**HTTP Servers:**
-
-```json
-{
-  "url": "https://api.example.com/mcp",
-  "headers": {
-    "Authorization": "Bearer YOUR_TOKEN"
-  }
 }
 ```
 
@@ -147,6 +128,14 @@ Based on [Anthropic's research](https://www.anthropic.com/research/building-effe
 - **Context efficient** - Process data in code before returning to model
 - **Better control flow** - Use familiar programming constructs
 - **Privacy** - Intermediate results stay in execution environment
+
+## Security Considerations
+
+- **Transport Hardening** – Only STDIO connections are supported. Commands and arguments are validated for control characters, directory traversal, and length limits before execution.
+- **Executable Safety** – Commands must exist on disk or resolve within the current `PATH`. Relative paths must be explicit (e.g. `./bin/server`).
+- **Resource Guardrails** – MCP clients enforce connection timeouts, concurrency limits, and graceful shutdown to prevent runaway processes.
+- **Safe Code Generation** – Generated filenames and identifiers are sanitized to avoid filesystem traversal and injection risks. All generated runtime helpers use strict TypeScript types (no `any`).
+- **Robust Error Handling** – Dedicated error classes (`ConfigError`, `ConnectionError`, `GenerationError`) provide precise failure messages while guaranteeing cleanup on failure.
 
 ## License
 

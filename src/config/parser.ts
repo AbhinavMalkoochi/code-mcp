@@ -1,23 +1,90 @@
 import { readFile } from "fs/promises";
 import { existsSync } from "fs";
+import { isAbsolute } from "path";
+import { z } from "zod";
+import { ConfigError } from "../errors.js";
 
-export interface StdioServerConfig {
-  type?: "stdio";
-  command: string;
-  args: string[];
-}
+const MAX_COMMAND_LENGTH = 256;
+const MAX_ARG_LENGTH = 2048;
+const MAX_ARGS = 64;
+const CONTROL_CHAR_PATTERN = /[\0\r\n]/;
+const PATH_SEPARATOR_PATTERN = /[\\/]/;
+const SERVER_NAME_PATTERN = /^[a-zA-Z0-9._-]+$/;
 
-export interface HttpServerConfig {
-  type?: "http";
-  url: string;
-  headers?: Record<string, string>;
-}
+const StdioServerSchema = z
+  .object({
+    type: z.literal("stdio").optional(),
+    command: z
+      .string()
+      .trim()
+      .min(1, { message: "Command must not be empty" })
+      .max(MAX_COMMAND_LENGTH, {
+        message: `Command must be <= ${MAX_COMMAND_LENGTH} characters`,
+      })
+      .refine((value) => !CONTROL_CHAR_PATTERN.test(value), {
+        message: "Command must not contain control characters",
+      })
+      .refine(
+        (value) =>
+          !value
+            .split(PATH_SEPARATOR_PATTERN)
+            .filter(Boolean)
+            .some((segment) => segment === ".."),
+        { message: "Command must not include parent directory segments" }
+      )
+      .refine(
+        (value) => {
+          if (!PATH_SEPARATOR_PATTERN.test(value)) {
+            return true;
+          }
+          return (
+            isAbsolute(value) ||
+            value.startsWith("./") ||
+            value.startsWith(".\\")
+          );
+        },
+        {
+          message:
+            'Command paths with separators must be absolute or start with "./"',
+        }
+      ),
+    args: z
+      .array(
+        z
+          .string()
+          .max(MAX_ARG_LENGTH, {
+            message: `Arguments must be <= ${MAX_ARG_LENGTH} characters`,
+          })
+          .refine((value) => !CONTROL_CHAR_PATTERN.test(value), {
+            message: "Arguments must not contain control characters",
+          })
+      )
+      .max(MAX_ARGS, {
+        message: `Too many arguments (max ${MAX_ARGS})`,
+      }),
+  })
+  .transform((value) => ({
+    ...value,
+    args: [...value.args],
+  }));
 
-export type ServerConfig = StdioServerConfig | HttpServerConfig;
+const MCPConfigSchema = z.object({
+  mcpServers: z.record(
+    z
+      .string()
+      .trim()
+      .min(1, { message: "Server name must not be empty" })
+      .regex(SERVER_NAME_PATTERN, {
+        message:
+          'Server names may only contain letters, numbers, ".", "-", and "_"',
+      }),
+    StdioServerSchema
+  ),
+});
 
-export interface MCPConfig {
-  mcpServers: Record<string, ServerConfig>;
-}
+export type StdioServerConfig = z.infer<typeof StdioServerSchema>;
+export type ServerConfig = StdioServerConfig;
+export type MCPConfig = z.infer<typeof MCPConfigSchema>;
 
 export function isStdioConfig(
   config: ServerConfig
@@ -25,100 +92,42 @@ export function isStdioConfig(
   return "command" in config;
 }
 
-export function isHttpConfig(config: ServerConfig): config is HttpServerConfig {
-  return "url" in config;
-}
-
 export class ConfigParser {
   static async parseConfig(configPath: string): Promise<MCPConfig> {
     if (!existsSync(configPath)) {
-      throw new Error(`Config file not found: ${configPath}`);
+      throw new ConfigError(`Config file not found: ${configPath}`);
     }
 
     try {
       const content = await readFile(configPath, "utf-8");
-      const config = JSON.parse(content) as MCPConfig;
+      const rawConfig = JSON.parse(content);
 
-      this.validateConfig(config);
-
-      return config;
+      return this.validateConfig(rawConfig);
     } catch (error) {
       if (error instanceof SyntaxError) {
-        throw new Error(`Invalid JSON in config file: ${error.message}`);
+        throw new ConfigError(`Invalid JSON in config file: ${error.message}`, {
+          cause: error,
+        });
       }
       throw error;
     }
   }
 
-  static validateConfig(config: unknown): asserts config is MCPConfig {
-    if (!config || typeof config !== "object") {
-      throw new Error("Config must be an object");
-    }
-
-    const configObj = config as Record<string, unknown>;
-
-    if (!configObj.mcpServers || typeof configObj.mcpServers !== "object") {
-      throw new Error('Config must have "mcpServers" object');
-    }
-
-    for (const [serverName, serverConfig] of Object.entries(
-      configObj.mcpServers
-    )) {
-      if (!serverConfig || typeof serverConfig !== "object") {
-        throw new Error(`Server "${serverName}" config must be an object`);
+  static validateConfig(config: unknown): MCPConfig {
+    const parsed = MCPConfigSchema.safeParse(config);
+    if (!parsed.success) {
+      const messages = parsed.error.issues
+        .map((issue) => {
+          const path = issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
+          return `${path}${issue.message}`;
+        })
+        .join("; ");
+      if (messages.length > 0) {
+        throw new ConfigError(`Invalid MCP configuration: ${messages}`);
       }
-
-      const typedConfig = serverConfig as Record<string, unknown>;
-
-      if ("command" in typedConfig) {
-        if (typeof typedConfig.command !== "string") {
-          throw new Error(
-            `Server "${serverName}" must have a "command" string property`
-          );
-        }
-
-        if (!Array.isArray(typedConfig.args)) {
-          throw new Error(
-            `Server "${serverName}" must have an "args" array property`
-          );
-        }
-
-        for (const arg of typedConfig.args) {
-          if (typeof arg !== "string") {
-            throw new Error(
-              `All args for server "${serverName}" must be strings`
-            );
-          }
-        }
-      } else if ("url" in typedConfig) {
-        if (typeof typedConfig.url !== "string") {
-          throw new Error(
-            `Server "${serverName}" must have a "url" string property`
-          );
-        }
-
-        if (typedConfig.headers !== undefined) {
-          if (
-            typeof typedConfig.headers !== "object" ||
-            typedConfig.headers === null
-          ) {
-            throw new Error(`Server "${serverName}" headers must be an object`);
-          }
-
-          for (const [key, value] of Object.entries(typedConfig.headers)) {
-            if (typeof value !== "string") {
-              throw new Error(
-                `All headers for server "${serverName}" must be strings (got ${typeof value} for "${key}")`
-              );
-            }
-          }
-        }
-      } else {
-        throw new Error(
-          `Server "${serverName}" must have either "command" (for STDIO) or "url" (for HTTP)`
-        );
-      }
+      throw new ConfigError("Invalid MCP configuration");
     }
+    return parsed.data;
   }
 
   static getServerNames(config: MCPConfig): string[] {
@@ -128,7 +137,7 @@ export class ConfigParser {
   static getServerConfig(config: MCPConfig, serverName: string): ServerConfig {
     const serverConfig = config.mcpServers[serverName];
     if (!serverConfig) {
-      throw new Error(`Server "${serverName}" not found in config`);
+      throw new ConfigError(`Server "${serverName}" not found in config`);
     }
     return serverConfig;
   }

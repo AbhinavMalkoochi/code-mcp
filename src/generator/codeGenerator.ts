@@ -1,9 +1,10 @@
 import { mkdir, writeFile } from "fs/promises";
-import { join, dirname } from "path";
+import { join } from "path";
 import { existsSync } from "fs";
 import { TypeGenerator } from "./typeGenerator.js";
 import type { DiscoveredTool } from "../discovery/toolDiscovery.js";
 import chalk from "chalk";
+import { GenerationError } from "../errors.js";
 
 export interface GenerationOptions {
   outputDir: string;
@@ -68,13 +69,17 @@ export class CodeGenerator {
     serverName: string,
     tool: DiscoveredTool
   ): Promise<string> {
-    const fileName = `${TypeGenerator.toCamelCase(tool.name)}.ts`;
+    const normalizedName = CodeGenerator.normalizeName(tool.name);
+    const fileBaseName = TypeGenerator.toCamelCase(normalizedName) || "tool";
+    const fileName = `${fileBaseName}.ts`;
     const filePath = join(serverDir, fileName);
 
-    const functionName = TypeGenerator.toCamelCase(tool.name);
-    const inputInterfaceName = `${TypeGenerator.toPascalCase(tool.name)}Input`;
+    const functionName = TypeGenerator.toCamelCase(normalizedName) || "tool";
+    const inputInterfaceName = `${TypeGenerator.toPascalCase(
+      normalizedName
+    )}Input`;
     const responseInterfaceName = `${TypeGenerator.toPascalCase(
-      tool.name
+      normalizedName
     )}Response`;
 
     // Generate input interface
@@ -99,11 +104,13 @@ ${responseInterface}
 
 ${description}
 export async function ${functionName}(input: ${inputInterfaceName}): Promise<${responseInterfaceName}> {
-  return callMCPTool<${responseInterfaceName}>('${serverName}', '${tool.name}', input);
+  return callMCPTool<${responseInterfaceName}>(${JSON.stringify(
+      serverName
+    )}, ${JSON.stringify(tool.name)}, input);
 }
 `;
 
-    await writeFile(filePath, code, "utf-8");
+    await this.writeFileSafe(filePath, code);
     return fileName;
   }
 
@@ -120,14 +127,15 @@ export async function ${functionName}(input: ${inputInterfaceName}): Promise<${r
       })
       .join("\n");
 
-    await writeFile(filePath, exports + "\n", "utf-8");
+    await this.writeFileSafe(filePath, `${exports}\n`);
   }
 
   async generateRuntimeClient(outputDir: string): Promise<void> {
     const clientPath = join(outputDir, "client.ts");
 
-    const clientCode = `import { MCPClient } from "../src/client/mcpClient.js";
+const clientCode = `import { MCPClient } from "../src/client/mcpClient.js";
 import { ConfigParser } from "../src/config/parser.js";
+import { ConnectionError } from "../src/errors.js";
 
 // Global registry of MCP clients
 const clientRegistry = new Map<string, MCPClient>();
@@ -142,59 +150,131 @@ export async function initializeMCPRuntime(configPath: string = "mcp.config.json
   }
 
   const config = await ConfigParser.parseConfig(configPath);
-  
-  // Initialize clients for all servers
-  for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
-    const client = new MCPClient(serverName);
-    await client.connect(serverConfig);
-    clientRegistry.set(serverName, client);
-  }
+  const initializedClients: Array<[string, MCPClient]> = [];
 
-  isInitialized = true;
+  try {
+    // Initialize clients for all servers
+    for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
+      if (clientRegistry.has(serverName)) {
+        continue;
+      }
+      const client = new MCPClient(serverName);
+      await client.connect(serverConfig);
+      clientRegistry.set(serverName, client);
+      initializedClients.push([serverName, client]);
+    }
+
+    isInitialized = true;
+  } catch (error) {
+    await Promise.all(
+      initializedClients.map(async ([name, client]) => {
+        clientRegistry.delete(name);
+        await client.close().catch(() => undefined);
+      })
+    );
+
+    if (error instanceof ConnectionError) {
+      throw error;
+    }
+    if (error instanceof Error) {
+      throw new ConnectionError(
+        \`Failed to initialize MCP runtime: \${error.message}\`,
+        { cause: error }
+      );
+    }
+    throw new ConnectionError(
+      \`Failed to initialize MCP runtime: \${String(error)}\`
+    );
+  }
 }
 
 /**
  * Close all MCP connections
  */
 export async function closeMCPRuntime(): Promise<void> {
-  for (const client of clientRegistry.values()) {
-    await client.close();
+  const errors: string[] = [];
+
+  for (const [serverName, client] of clientRegistry.entries()) {
+    try {
+      await client.close();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error);
+      errors.push(\`\${serverName}: \${message}\`);
+    }
   }
   clientRegistry.clear();
   isInitialized = false;
+
+  if (errors.length > 0) {
+    throw new ConnectionError(
+      \`Failed to close MCP clients: \${errors.join("; ")}\`
+    );
+  }
 }
 
 /**
  * Call an MCP tool - used by generated code
  */
-export async function callMCPTool<T = any>(
+export async function callMCPTool<TResponse = unknown>(
   serverName: string,
   toolName: string,
-  input: any
-): Promise<T> {
+  input: Record<string, unknown>
+): Promise<TResponse> {
   if (!isInitialized) {
-    throw new Error(
+    throw new ConnectionError(
       "MCP runtime not initialized. Call initializeMCPRuntime() first."
     );
   }
 
   const client = clientRegistry.get(serverName);
   if (!client) {
-    throw new Error(\`MCP server "\${serverName}" not found in registry\`);
+    throw new ConnectionError(\`MCP server "\${serverName}" not found in registry\`);
   }
 
-  return client.callTool<T>(toolName, input);
+  return client.callTool<TResponse>(toolName, input);
 }
 `;
 
-    await writeFile(clientPath, clientCode, "utf-8");
+    await this.writeFileSafe(clientPath, clientCode);
     console.log(chalk.gray(`\nGenerated runtime client: client.ts`));
   }
 
   private async ensureDir(dirPath: string): Promise<void> {
-    if (!existsSync(dirPath)) {
-      await mkdir(dirPath, { recursive: true });
+    if (existsSync(dirPath)) {
+      return;
     }
+    try {
+      await mkdir(dirPath, { recursive: true });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error);
+      throw new GenerationError(
+        `Failed to create directory "${dirPath}": ${message}`,
+        error instanceof Error ? { cause: error } : undefined
+      );
+    }
+  }
+
+  private async writeFileSafe(filePath: string, contents: string): Promise<void> {
+    try {
+      await writeFile(filePath, contents, "utf-8");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error);
+      throw new GenerationError(
+        `Failed to write file "${filePath}": ${message}`,
+        error instanceof Error ? { cause: error } : undefined
+      );
+    }
+  }
+
+  private static normalizeName(name: string): string {
+    const sanitized = name
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    return sanitized.length > 0 ? sanitized : "tool";
   }
 
   static groupToolsByServer(

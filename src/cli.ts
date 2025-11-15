@@ -7,6 +7,21 @@ import { ToolDiscovery } from "./discovery/toolDiscovery.js";
 import { CodeGenerator } from "./generator/codeGenerator.js";
 import { ConfigWatcher } from "./watcher/configWatcher.js";
 
+const PATH_CONTROL_PATTERN = /[\0\r\n]/;
+
+function sanitizePathOption(rawPath: string, optionName: string): string {
+  const trimmed = rawPath.trim();
+  if (trimmed.length === 0) {
+    throw new Error(`Option "${optionName}" must not be empty`);
+  }
+  if (PATH_CONTROL_PATTERN.test(trimmed)) {
+    throw new Error(
+      `Option "${optionName}" contains invalid control characters`
+    );
+  }
+  return trimmed;
+}
+
 const program = new Command();
 
 program
@@ -27,13 +42,16 @@ program
   )
   .action(async (options) => {
     try {
+      const configPath = sanitizePathOption(options.config, "config");
+      const outputPath = sanitizePathOption(options.output, "output");
+
       console.log(chalk.bold.blue("\n🚀 MCP Code Generator\n"));
-      console.log(chalk.gray(`Config: ${options.config}`));
-      console.log(chalk.gray(`Output: ${options.output}\n`));
+      console.log(chalk.gray(`Config: ${configPath}`));
+      console.log(chalk.gray(`Output: ${outputPath}\n`));
 
       // Parse config
       console.log(chalk.cyan("📝 Parsing configuration..."));
-      const config = await ConfigParser.parseConfig(options.config);
+      const config = await ConfigParser.parseConfig(configPath);
       const serverCount = Object.keys(config.mcpServers).length;
       console.log(chalk.green(`✓ Found ${serverCount} server(s) in config\n`));
 
@@ -56,11 +74,11 @@ program
       // Generate code
       const generator = new CodeGenerator();
       const toolsByServer = CodeGenerator.groupToolsByServer(allTools);
-      await generator.generateAll(options.output, toolsByServer);
+      await generator.generateAll(outputPath, toolsByServer);
 
       console.log(chalk.bold.green("✅ Success!"));
       console.log(
-        chalk.gray(`\nGenerated code is available in: ${options.output}`)
+        chalk.gray(`\nGenerated code is available in: ${outputPath}`)
       );
       console.log(
         chalk.gray(
@@ -93,9 +111,11 @@ program
   .option("-d, --debounce <ms>", "Debounce delay in milliseconds", "1000")
   .action(async (options) => {
     try {
+      const configPath = sanitizePathOption(options.config, "config");
+      const outputPath = sanitizePathOption(options.output, "output");
       const watcher = new ConfigWatcher({
-        configPath: options.config,
-        outputPath: options.output,
+        configPath,
+        outputPath,
         debounceMs: parseInt(options.debounce, 10),
       });
 

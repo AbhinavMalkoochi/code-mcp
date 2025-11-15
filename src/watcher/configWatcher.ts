@@ -4,6 +4,22 @@ import chalk from "chalk";
 import { ConfigParser } from "../config/parser.js";
 import { ToolDiscovery } from "../discovery/toolDiscovery.js";
 import { CodeGenerator } from "../generator/codeGenerator.js";
+import { ConfigError } from "../errors.js";
+
+const PATH_CONTROL_PATTERN = /[\0\r\n]/;
+
+function sanitizeWatcherPath(path: string, label: string): string {
+  const trimmed = path.trim();
+  if (trimmed.length === 0) {
+    throw new ConfigError(`Watcher option "${label}" must not be empty`);
+  }
+  if (PATH_CONTROL_PATTERN.test(trimmed)) {
+    throw new ConfigError(
+      `Watcher option "${label}" contains invalid control characters`
+    );
+  }
+  return trimmed;
+}
 
 export interface WatcherOptions {
   configPath: string;
@@ -19,8 +35,8 @@ export class ConfigWatcher {
   private isGenerating = false;
 
   constructor(options: WatcherOptions) {
-    this.configPath = options.configPath;
-    this.outputPath = options.outputPath;
+    this.configPath = sanitizeWatcherPath(options.configPath, "configPath");
+    this.outputPath = sanitizeWatcherPath(options.outputPath, "outputPath");
     this.debounceMs = options.debounceMs || 1000;
   }
 
