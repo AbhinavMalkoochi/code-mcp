@@ -147,16 +147,16 @@ Research from Anthropic shows this can reduce token usage by up to 98.7% compare
 A `search.ts` file is generated with utilities for agents to discover tools:
 
 ```typescript
-import { searchTools, listServers, listTools } from './servers/search.js';
+import { searchTools, listServers, listTools } from "./servers/search.js";
 
 // Search by keyword
-const gitTools = searchTools('commit');
+const gitTools = searchTools("commit");
 
 // List all servers
 const servers = listServers();
 
 // List tools for a server
-const tools = listTools('git');
+const tools = listTools("git");
 ```
 
 ## IDE Integration

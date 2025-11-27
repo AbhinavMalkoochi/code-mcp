@@ -252,10 +252,15 @@ export async function callMCPTool<TResponse = unknown>(
     for (const [serverName, tools] of toolsByServer.entries()) {
       for (const tool of tools) {
         const normalizedName = CodeGenerator.normalizeName(tool.name);
-        const functionName = TypeGenerator.toCamelCase(normalizedName) || "tool";
+        const functionName =
+          TypeGenerator.toCamelCase(normalizedName) || "tool";
         const description = tool.description || tool.name;
         toolEntries.push(
-          `  { server: ${JSON.stringify(serverName)}, name: ${JSON.stringify(tool.name)}, fn: ${JSON.stringify(functionName)}, description: ${JSON.stringify(description)} }`
+          `  { server: ${JSON.stringify(serverName)}, name: ${JSON.stringify(
+            tool.name
+          )}, fn: ${JSON.stringify(
+            functionName
+          )}, description: ${JSON.stringify(description)} }`
         );
       }
     }
