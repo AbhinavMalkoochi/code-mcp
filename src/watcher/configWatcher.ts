@@ -58,7 +58,11 @@ export class ConfigWatcher {
       });
       console.log(chalk.green("✓ Watching for config changes...\n"));
     } catch (error) {
-      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
         throw new ConfigError(`Config file not found: ${this.configPath}`);
       }
       throw error;

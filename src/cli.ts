@@ -32,9 +32,7 @@ const __dirname = dirname(__filename);
 const packageJsonPath = join(__dirname, "..", "package.json");
 let version = "1.0.0";
 try {
-  const packageJson = JSON.parse(
-    readFileSync(packageJsonPath, "utf-8")
-  );
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
   version = packageJson.version || version;
 } catch {
   // Fallback to default version if package.json can't be read
@@ -139,13 +137,15 @@ program
     try {
       const configPath = sanitizePathOption(options.config, "config");
       const outputPath = sanitizePathOption(options.output, "output");
-      
+
       // Validate debounce value
       const debounceMs = parseInt(options.debounce, 10);
       if (isNaN(debounceMs) || debounceMs < 100 || debounceMs > 60000) {
-        throw new Error("Debounce delay must be between 100 and 60000 milliseconds");
+        throw new Error(
+          "Debounce delay must be between 100 and 60000 milliseconds"
+        );
       }
-      
+
       const watcher = new ConfigWatcher({
         configPath,
         outputPath,
