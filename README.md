@@ -66,9 +66,27 @@ Pass environment variables to MCP servers using the `env` field. Use `${VAR_NAME
 }
 ```
 
-### Relative Paths
+### HTTP/SSE Transport
 
-For relative paths, use explicit notation:
+For web-based MCP servers, use `type: "http"` or `type: "sse"`:
+
+```json
+{
+  "mcpServers": {
+    "remote": {
+      "type": "http",
+      "url": "https://mcp.example.com/api",
+      "headers": {
+        "Authorization": "Bearer ${API_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+### Relative Paths (STDIO)
+
+For local STDIO servers with relative paths:
 
 ```json
 {
@@ -124,13 +142,32 @@ When you connect an agent to many MCP servers, loading all tool definitions upfr
 
 Research from Anthropic shows this can reduce token usage by up to 98.7% compared to loading all tools upfront.
 
+## Tool Discovery
+
+A `search.ts` file is generated with utilities for agents to discover tools:
+
+```typescript
+import { searchTools, listServers, listTools } from './servers/search.js';
+
+// Search by keyword
+const gitTools = searchTools('commit');
+
+// List all servers
+const servers = listServers();
+
+// List tools for a server
+const tools = listTools('git');
+```
+
 ## IDE Integration
 
 For AI coding assistants (Cursor, Claude Code, etc.), you can create rules files that instruct the LLM to use your generated `servers/` folder. This ensures the assistant leverages code execution instead of direct MCP calls. See the Anthropic blog on [Code execution with MCP](https://www.anthropic.com/research/code-execution-mcp) for more details.
 
-## Limitations
+## Supported Transports
 
-Only STDIO transport is currently supported. Commands must exist on disk or be in your PATH. Relative paths must be explicit (start with `./`).
+- **STDIO** (default): Local process communication
+- **HTTP**: StreamableHTTP for modern MCP servers
+- **SSE**: Server-Sent Events for legacy servers
 
 ## License
 
