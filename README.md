@@ -1,53 +1,16 @@
 # MCP Code Generator
 
-Generate type-safe TypeScript wrappers for Model Context Protocol (MCP) tools. Connects to MCP servers via STDIO or HTTP, discovers tools automatically, and generates clean, type-safe code.
+Generate type-safe TypeScript functions for your MCP tools. Instead of loading all tool definitions into your agent's context, generate code that your agent can import and use on-demand. Reduce your tool context by 98.7% compared to traditional MCP usage.
 
-## Features
+## Quick Start
 
-- 🔍 **Auto-discovery** - Connects to MCP servers and discovers all available tools
-- 🎯 **Type-safe** - Generates TypeScript interfaces from JSON schemas
-- 📦 **Clean structure** - Organized, deterministic folder structure
-- 🔒 **Secure STDIO** - Hardened STDIO transport with strict validation
-- 👀 **Watch mode** - Auto-regenerate on config changes
-- 🎨 **Beautiful CLI** - Colorful output with progress indicators
-
-## Installation
+Install the CLI tool:
 
 ```bash
 npm install -g @abmalk/mcpcode
 ```
 
-### Run Without Installing
-
-```bash
-npx @abmalk/mcpcode generate
-```
-
-## Usage
-
-### Generate Once
-
-```bash
-mcpcode generate
-mcpcode generate --config my-config.json --output generated/
-```
-
-### Watch Mode
-
-```bash
-mcpcode watch
-mcpcode watch --debounce 2000
-```
-
-### Options
-
-- `-c, --config <path>` - Config file path (default: `mcp.config.json`)
-- `-o, --output <path>` - Output directory (default: `servers/`)
-- `-d, --debounce <ms>` - Watch debounce delay (default: `1000`)
-
-## Configuration
-
-Create `mcp.config.json`:
+Create a config file `mcp.config.json` in your project:
 
 ```json
 {
@@ -55,88 +18,92 @@ Create `mcp.config.json`:
     "git": {
       "command": "uvx",
       "args": ["mcp-server-git", "--repository", "."]
-    },
-    "fetch": {
-      "command": "uvx",
-      "args": ["mcp-server-fetch"]
     }
   }
 }
 ```
 
-### STDIO Servers
+Generate the code:
+
+```bash
+mcpcode generate
+```
+
+That's it. You'll find TypeScript functions in the `servers/` directory, ready to use.
+
+## Configuration
+
+The config file tells the generator which MCP servers to connect to. Each server needs a command and optional arguments:
 
 ```json
 {
-  "command": "uvx",
-  "args": ["mcp-server-name"]
+  "mcpServers": {
+    "server-name": {
+      "command": "uvx",
+      "args": ["mcp-server-name"]
+    }
+  }
 }
 ```
 
-## Generated Code
+Server names can contain letters, numbers, dots, dashes, and underscores. They become the folder names in your generated code.
 
-```
-servers/
-├── client.ts          # Runtime client
-├── git/
-│   ├── getFile.ts    # Individual tools
-│   ├── listFiles.ts
-│   └── index.ts      # Exports
-└── fetch/
-    ├── fetch.ts
-    └── index.ts
-```
+For relative paths, use explicit notation:
 
-### Example Tool
-
-```typescript
-import { callMCPTool } from "../client.js";
-
-export interface GetFileInput {
-  path: string;
-  ref?: string;
-}
-
-export interface GetFileResponse {
-  content: string;
-}
-
-export async function getFile(input: GetFileInput): Promise<GetFileResponse> {
-  return callMCPTool<GetFileResponse>("git", "getFile", input);
+```json
+{
+  "mcpServers": {
+    "local": {
+      "command": "./bin/my-server",
+      "args": []
+    }
+  }
 }
 ```
 
-## Using Generated Code
+## CLI Options
 
-```typescript
-import { initializeMCPRuntime, closeMCPRuntime } from "./servers/client.js";
-import * as git from "./servers/git/index.js";
+Generate code once:
 
-await initializeMCPRuntime("mcp.config.json");
-
-const file = await git.getFile({ path: "README.md" });
-console.log(file.content);
-
-await closeMCPRuntime();
+```bash
+mcpcode generate
+mcpcode generate --config my-config.json --output generated/
 ```
 
-## Benefits
+Watch for config changes and auto-regenerate:
 
-Based on [Anthropic's research](https://www.anthropic.com/research/building-effective-agents):
+```bash
+mcpcode watch
+mcpcode watch --debounce 2000
+```
 
-- **98.7% token reduction** - Load tools on-demand vs upfront
-- **Context efficient** - Process data in code before returning to model
-- **Better control flow** - Use familiar programming constructs
-- **Privacy** - Intermediate results stay in execution environment
+Available options:
 
-## Security Considerations
+- `-c, --config <path>` - Path to config file (default: `mcp.config.json`)
+- `-o, --output <path>` - Output directory (default: `servers/`)
+- `-d, --debounce <ms>` - Watch debounce delay in milliseconds (default: `1000`)
 
-- **Transport Hardening** – Only STDIO connections are supported. Commands and arguments are validated for control characters, directory traversal, and length limits before execution.
-- **Executable Safety** – Commands must exist on disk or resolve within the current `PATH`. Relative paths must be explicit (e.g. `./bin/server`).
-- **Resource Guardrails** – MCP clients enforce connection timeouts, concurrency limits, and graceful shutdown to prevent runaway processes.
-- **Safe Code Generation** – Generated filenames and identifiers are sanitized to avoid filesystem traversal and injection risks. All generated runtime helpers use strict TypeScript types (no `any`).
-- **Robust Error Handling** – Dedicated error classes (`ConfigError`, `ConnectionError`, `GenerationError`) provide precise failure messages while guaranteeing cleanup on failure.
+## Run Without Installing
+
+You can use npx to run it without installing:
+
+```bash
+npx @abmalk/mcpcode generate
+```
+
+## Why Use This?
+
+When you connect an agent to many MCP servers, loading all tool definitions upfront can consume a lot of tokens. This approach lets your agent:
+
+- Load tools on-demand by importing only what it needs
+- Process data in code before sending results back to the model
+- Use familiar programming constructs like loops and conditionals
+- Keep intermediate results private (they stay in the execution environment)
+
+Research from Anthropic shows this can reduce token usage by up to 98.7% compared to loading all tools upfront.
+
+Only STDIO transport is currently supported. Commands must exist on disk or be in your PATH. Relative paths must be explicit (start with `./`).
 
 ## License
 
-ISC
+MIT

@@ -133,9 +133,7 @@ export async function ${functionName}(input: ${inputInterfaceName}): Promise<${r
   async generateRuntimeClient(outputDir: string): Promise<void> {
     const clientPath = join(outputDir, "client.ts");
 
-    const clientCode = `import { MCPClient } from "../src/client/mcpClient.js";
-import { ConfigParser } from "../src/config/parser.js";
-import { ConnectionError } from "../src/errors.js";
+    const clientCode = `import { MCPClient, ConfigParser, ConnectionError } from "@abmalk/mcpcode";
 
 // Global registry of MCP clients
 const clientRegistry = new Map<string, MCPClient>();

@@ -1,16 +1,29 @@
 {
-  "name": "@your-org/mcpcode",
+  "name": "@abmalk/mcpcode",
   "version": "1.0.0",
-  "description": "CLI tool to generate sandboxed TypeScript functions for MCP tools",
+  "description": "Generate type-safe TypeScript wrappers for Model Context Protocol (MCP) tools. Connects to MCP servers via STDIO, discovers tools automatically, and generates clean, type-safe code.",
   "main": "dist/index.js",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "bin": {
     "mcpcode": "./dist/cli.js"
   },
   "files": [
     "dist/**/*",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -21,23 +34,30 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/mcpcode.git"
+    "url": "https://github.com/AbhinavMalkoochi/code-mcp"
   },
   "bugs": {
-    "url": "https://github.com/your-username/mcpcode/issues"
+    "url": "https://github.com/abmalk/mcpcode/issues"
   },
-  "homepage": "https://github.com/your-username/mcpcode#readme",
+  "homepage": "https://github.com/AbhinavMalkoochi/code-mcp#readme",
   "keywords": [
     "mcp",
+    "model-context-protocol",
     "code-generation",
-    "cli"
+    "typescript",
+    "cli",
+    "mcp-server",
+    "mcp-tools",
+    "type-safe",
+    "codegen"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": "abmalk",
+  "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.22.0",
     "chalk": "^5.4.1",
-    "commander": "^13.0.0"
+    "commander": "^13.0.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^24.10.0",

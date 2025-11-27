@@ -2,6 +2,9 @@
 
 import { Command } from "commander";
 import chalk from "chalk";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 import { ConfigParser } from "./config/parser.js";
 import { ToolDiscovery } from "./discovery/toolDiscovery.js";
 import { CodeGenerator } from "./generator/codeGenerator.js";
@@ -22,6 +25,20 @@ function sanitizePathOption(rawPath: string, optionName: string): string {
   return trimmed;
 }
 
+// Read version from package.json
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageJsonPath = join(__dirname, "..", "package.json");
+let version = "1.0.0";
+try {
+  const packageJson = JSON.parse(
+    readFileSync(packageJsonPath, "utf-8")
+  );
+  version = packageJson.version || version;
+} catch {
+  // Fallback to default version if package.json can't be read
+}
+
 const program = new Command();
 
 program
@@ -29,7 +46,7 @@ program
   .description(
     "CLI tool to generate sandboxed TypeScript functions for MCP tools"
   )
-  .version("1.0.0");
+  .version(version);
 
 program
   .command("generate")
