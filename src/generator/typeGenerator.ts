@@ -13,8 +13,6 @@ export interface JSONSchema {
 }
 
 export class TypeGenerator {
-  private seenTypes = new Set<string>();
-
   static toPascalCase(str: string): string {
     return str
       .replace(/[-_](.)/g, (_, char) => char.toUpperCase())

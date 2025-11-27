@@ -41,10 +41,6 @@ export class ConfigWatcher {
   }
 
   async start(): Promise<void> {
-    if (!existsSync(this.configPath)) {
-      throw new Error(`Config file not found: ${this.configPath}`);
-    }
-
     console.log(chalk.bold.blue("\n👀 MCP Config Watcher Started\n"));
     console.log(chalk.gray(`Watching: ${this.configPath}`));
     console.log(chalk.gray(`Output: ${this.outputPath}`));
@@ -53,14 +49,20 @@ export class ConfigWatcher {
     // Generate initially
     await this.regenerate();
 
-    // Watch for changes
-    watch(this.configPath, async (eventType) => {
-      if (eventType === "change") {
-        this.scheduleRegeneration();
+    // Watch for changes - handle file not found gracefully
+    try {
+      watch(this.configPath, async (eventType) => {
+        if (eventType === "change") {
+          this.scheduleRegeneration();
+        }
+      });
+      console.log(chalk.green("✓ Watching for config changes...\n"));
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+        throw new ConfigError(`Config file not found: ${this.configPath}`);
       }
-    });
-
-    console.log(chalk.green("✓ Watching for config changes...\n"));
+      throw error;
+    }
   }
 
   private scheduleRegeneration(): void {

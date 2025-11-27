@@ -172,6 +172,8 @@ function buildExecutableCandidates(
 export class MCPClient {
   private static activeClients = 0;
   private static readonly MAX_CONCURRENT_CLIENTS = 8;
+  private static readonly clientRegistry = new Set<MCPClient>();
+  private static shutdownHandlersRegistered = false;
 
   private client: Client;
   private transport: Transport | null = null;
@@ -190,6 +192,8 @@ export class MCPClient {
         capabilities: {},
       }
     );
+    MCPClient.clientRegistry.add(this);
+    MCPClient.registerShutdownHandlers();
   }
 
   async connect(config: ServerConfig): Promise<void> {
@@ -374,6 +378,27 @@ export class MCPClient {
       MCPClient.activeClients -= 1;
     }
     this.isConnected = false;
+    MCPClient.clientRegistry.delete(this);
+  }
+
+  private static registerShutdownHandlers(): void {
+    if (MCPClient.shutdownHandlersRegistered) {
+      return;
+    }
+    MCPClient.shutdownHandlersRegistered = true;
+
+    const cleanup = async () => {
+      const clients = Array.from(MCPClient.clientRegistry);
+      await Promise.allSettled(clients.map((client) => client.close()));
+    };
+
+    process.on("SIGTERM", () => {
+      cleanup().finally(() => process.exit(0));
+    });
+
+    process.on("SIGINT", () => {
+      cleanup().finally(() => process.exit(0));
+    });
   }
 }
 

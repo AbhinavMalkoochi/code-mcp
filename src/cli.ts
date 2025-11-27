@@ -130,10 +130,17 @@ program
     try {
       const configPath = sanitizePathOption(options.config, "config");
       const outputPath = sanitizePathOption(options.output, "output");
+      
+      // Validate debounce value
+      const debounceMs = parseInt(options.debounce, 10);
+      if (isNaN(debounceMs) || debounceMs < 100 || debounceMs > 60000) {
+        throw new Error("Debounce delay must be between 100 and 60000 milliseconds");
+      }
+      
       const watcher = new ConfigWatcher({
         configPath,
         outputPath,
-        debounceMs: parseInt(options.debounce, 10),
+        debounceMs,
       });
 
       await watcher.start();
