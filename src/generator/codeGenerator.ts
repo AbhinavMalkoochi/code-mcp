@@ -36,6 +36,9 @@ export class CodeGenerator {
     // Generate the root client file that will be used by all generated code
     await this.generateRuntimeClient(outputDir);
 
+    // Generate search file for tool discovery
+    await this.generateSearchFile(outputDir, toolsByServer);
+
     console.log(chalk.green("\n✓ Code generation complete!\n"));
   }
 
@@ -236,6 +239,71 @@ export async function callMCPTool<TResponse = unknown>(
 
     await this.writeFileSafe(clientPath, clientCode);
     console.log(chalk.gray(`\nGenerated runtime client: client.ts`));
+  }
+
+  async generateSearchFile(
+    outputDir: string,
+    toolsByServer: Map<string, DiscoveredTool[]>
+  ): Promise<void> {
+    const searchPath = join(outputDir, "search.ts");
+
+    // Build tool registry data
+    const toolEntries: string[] = [];
+    for (const [serverName, tools] of toolsByServer.entries()) {
+      for (const tool of tools) {
+        const normalizedName = CodeGenerator.normalizeName(tool.name);
+        const functionName = TypeGenerator.toCamelCase(normalizedName) || "tool";
+        const description = tool.description || tool.name;
+        toolEntries.push(
+          `  { server: ${JSON.stringify(serverName)}, name: ${JSON.stringify(tool.name)}, fn: ${JSON.stringify(functionName)}, description: ${JSON.stringify(description)} }`
+        );
+      }
+    }
+
+    const searchCode = `/** Tool metadata for discovery */
+export interface ToolInfo {
+  server: string;
+  name: string;
+  fn: string;
+  description: string;
+}
+
+/** Registry of all available tools */
+export const toolRegistry: ToolInfo[] = [
+${toolEntries.join(",\n")}
+];
+
+/** List all servers */
+export function listServers(): string[] {
+  return [...new Set(toolRegistry.map(t => t.server))];
+}
+
+/** List tools for a specific server */
+export function listTools(serverName?: string): ToolInfo[] {
+  if (!serverName) {
+    return toolRegistry;
+  }
+  return toolRegistry.filter(t => t.server === serverName);
+}
+
+/** Search tools by keyword (matches name or description) */
+export function searchTools(query: string): ToolInfo[] {
+  const q = query.toLowerCase();
+  return toolRegistry.filter(t =>
+    t.name.toLowerCase().includes(q) ||
+    t.description.toLowerCase().includes(q) ||
+    t.server.toLowerCase().includes(q)
+  );
+}
+
+/** Get tool info by server and name */
+export function getTool(serverName: string, toolName: string): ToolInfo | undefined {
+  return toolRegistry.find(t => t.server === serverName && t.name === toolName);
+}
+`;
+
+    await this.writeFileSafe(searchPath, searchCode);
+    console.log(chalk.gray(`Generated search utilities: search.ts`));
   }
 
   private async ensureDir(dirPath: string): Promise<void> {
