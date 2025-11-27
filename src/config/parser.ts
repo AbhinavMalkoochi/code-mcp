@@ -7,9 +7,22 @@ import { ConfigError } from "../errors.js";
 const MAX_COMMAND_LENGTH = 256;
 const MAX_ARG_LENGTH = 2048;
 const MAX_ARGS = 64;
+const MAX_URL_LENGTH = 2048;
 const CONTROL_CHAR_PATTERN = /[\0\r\n]/;
 const PATH_SEPARATOR_PATTERN = /[\\/]/;
 const SERVER_NAME_PATTERN = /^[a-zA-Z0-9._-]+$/;
+
+// HTTP/SSE transport schema
+const HttpServerSchema = z.object({
+  type: z.enum(["http", "sse"]),
+  url: z
+    .string()
+    .trim()
+    .min(1, { message: "URL must not be empty" })
+    .max(MAX_URL_LENGTH, { message: `URL must be <= ${MAX_URL_LENGTH} characters` })
+    .url({ message: "Invalid URL format" }),
+  headers: z.record(z.string()).optional(),
+});
 
 const StdioServerSchema = z
   .object({
@@ -70,6 +83,9 @@ const StdioServerSchema = z
     env: value.env ? { ...value.env } : undefined,
   }));
 
+// Union of all transport types
+const ServerConfigSchema = z.union([StdioServerSchema, HttpServerSchema]);
+
 const MCPConfigSchema = z.object({
   mcpServers: z.record(
     z
@@ -80,18 +96,25 @@ const MCPConfigSchema = z.object({
         message:
           'Server names may only contain letters, numbers, ".", "-", and "_"',
       }),
-    StdioServerSchema
+    ServerConfigSchema
   ),
 });
 
 export type StdioServerConfig = z.infer<typeof StdioServerSchema>;
-export type ServerConfig = StdioServerConfig;
+export type HttpServerConfig = z.infer<typeof HttpServerSchema>;
+export type ServerConfig = StdioServerConfig | HttpServerConfig;
 export type MCPConfig = z.infer<typeof MCPConfigSchema>;
 
 export function isStdioConfig(
   config: ServerConfig
 ): config is StdioServerConfig {
   return "command" in config;
+}
+
+export function isHttpConfig(
+  config: ServerConfig
+): config is HttpServerConfig {
+  return "url" in config && (config.type === "http" || config.type === "sse");
 }
 
 export class ConfigParser {

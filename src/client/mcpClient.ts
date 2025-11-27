@@ -1,12 +1,14 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { access } from "fs/promises";
 import { constants as fsConstants } from "fs";
 import { delimiter, isAbsolute, join, resolve } from "path";
 import { setPriority } from "node:os";
-import type { ServerConfig, StdioServerConfig } from "../config/parser.js";
-import { isStdioConfig } from "../config/parser.js";
+import type { ServerConfig, StdioServerConfig, HttpServerConfig } from "../config/parser.js";
+import { isStdioConfig, isHttpConfig } from "../config/parser.js";
 import { ConnectionError } from "../errors.js";
 
 export type { ServerConfig as MCPServerConfig };
@@ -203,12 +205,16 @@ export class MCPClient {
           `MCP client for "${this.serverName}" is already connected`
         );
       }
-      if (!isStdioConfig(config)) {
+      
+      if (isStdioConfig(config)) {
+        await this.connectStdio(config);
+      } else if (isHttpConfig(config)) {
+        await this.connectHttp(config);
+      } else {
         throw new ConnectionError(
-          `Server "${this.serverName}" is misconfigured: only STDIO transport is supported`
+          `Server "${this.serverName}" has unsupported transport type`
         );
       }
-      await this.connectStdio(config);
     } catch (error) {
       await this.close().catch(() => undefined);
       if (error instanceof ConnectionError) {
@@ -301,6 +307,73 @@ export class MCPClient {
           // Ignore if setting priority is not supported on this platform.
         }
       }
+    } finally {
+      if (this.connectionTimer) {
+        clearTimeout(this.connectionTimer);
+        this.connectionTimer = null;
+      }
+    }
+  }
+
+  private async connectHttp(config: HttpServerConfig): Promise<void> {
+    if (MCPClient.activeClients >= MCPClient.MAX_CONCURRENT_CLIENTS) {
+      throw new ConnectionError(
+        `Maximum concurrent MCP connections (${MCPClient.MAX_CONCURRENT_CLIENTS}) reached`
+      );
+    }
+
+    const url = new URL(config.url);
+    
+    // Process headers, expanding ${VAR} references
+    const headers: Record<string, string> = {};
+    if (config.headers) {
+      for (const [key, value] of Object.entries(config.headers)) {
+        headers[key] = value.replace(/\$\{([^}]+)\}/g, (_, varName) => {
+          return process.env[varName] || "";
+        });
+      }
+    }
+
+    const hasHeaders = Object.keys(headers).length > 0;
+    let transport: SSEClientTransport | StreamableHTTPClientTransport;
+    
+    if (config.type === "sse") {
+      transport = hasHeaders
+        ? new SSEClientTransport(url, { requestInit: { headers } })
+        : new SSEClientTransport(url);
+    } else {
+      // type: "http" - use StreamableHTTP with SSE fallback
+      try {
+        transport = hasHeaders
+          ? new StreamableHTTPClientTransport(url, { requestInit: { headers } })
+          : new StreamableHTTPClientTransport(url);
+      } catch {
+        // Fallback to SSE if StreamableHTTP fails
+        transport = hasHeaders
+          ? new SSEClientTransport(url, { requestInit: { headers } })
+          : new SSEClientTransport(url);
+      }
+    }
+
+    // Cast needed due to exactOptionalPropertyTypes mismatch with SDK types
+    this.transport = transport as Transport;
+
+    const connectPromise = this.client.connect(transport as Transport);
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      this.connectionTimer = setTimeout(() => {
+        transport.close().catch(() => undefined);
+        reject(
+          new ConnectionError(
+            `Timed out after ${CONNECT_TIMEOUT_MS}ms connecting to "${this.serverName}"`
+          )
+        );
+      }, CONNECT_TIMEOUT_MS);
+    });
+
+    try {
+      await Promise.race([connectPromise, timeoutPromise]);
+      this.isConnected = true;
+      MCPClient.activeClients += 1;
     } finally {
       if (this.connectionTimer) {
         clearTimeout(this.connectionTimer);

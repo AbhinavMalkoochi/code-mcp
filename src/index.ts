@@ -1,7 +1,7 @@
 export { MCPClient } from "./client/mcpClient.js";
 export type { MCPServerConfig, MCPTool } from "./client/mcpClient.js";
-export { ConfigParser } from "./config/parser.js";
-export type { MCPConfig, ServerConfig } from "./config/parser.js";
+export { ConfigParser, isStdioConfig, isHttpConfig } from "./config/parser.js";
+export type { MCPConfig, ServerConfig, StdioServerConfig, HttpServerConfig } from "./config/parser.js";
 export { ToolDiscovery } from "./discovery/toolDiscovery.js";
 export type {
   DiscoveredTool,
