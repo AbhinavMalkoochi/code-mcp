@@ -21,7 +21,6 @@ export class ToolDiscovery {
 
   async discoverAll(): Promise<DiscoveryResult[]> {
     const serverNames = Object.keys(this.config.mcpServers);
-    const results: DiscoveryResult[] = [];
 
     console.log(
       chalk.blue(
@@ -29,10 +28,10 @@ export class ToolDiscovery {
       )
     );
 
-    for (const serverName of serverNames) {
-      const result = await this.discoverServer(serverName);
-      results.push(result);
-    }
+    // Discover all servers in parallel
+    const results = await Promise.all(
+      serverNames.map((serverName) => this.discoverServer(serverName))
+    );
 
     return results;
   }

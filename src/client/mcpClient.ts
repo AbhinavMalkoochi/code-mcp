@@ -238,10 +238,29 @@ export class MCPClient {
       );
     }
 
-    const stdioTransport = new StdioClientTransport({
+    // Process environment variables, expanding ${VAR} references
+    const transportConfig: {
+      command: string;
+      args: string[];
+      env?: Record<string, string>;
+    } = {
       command: sanitizedCommand,
       args: sanitizedArgs,
-    });
+    };
+
+    if (config.env) {
+      transportConfig.env = Object.entries(config.env).reduce(
+        (acc, [key, value]) => {
+          acc[key] = value.replace(/\$\{([^}]+)\}/g, (_, varName) => {
+            return process.env[varName] || "";
+          });
+          return acc;
+        },
+        {} as Record<string, string>
+      );
+    }
+
+    const stdioTransport = new StdioClientTransport(transportConfig);
 
     stdioTransport.onclose = () => {
       this.handleDisconnect();

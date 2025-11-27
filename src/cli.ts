@@ -2,7 +2,8 @@
 
 import { Command } from "commander";
 import chalk from "chalk";
-import { readFileSync } from "fs";
+import { readFileSync, existsSync } from "fs";
+import { rm } from "fs/promises";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { ConfigParser } from "./config/parser.js";
@@ -57,6 +58,7 @@ program
     "Output directory for generated code",
     "servers/"
   )
+  .option("--clean", "Remove output directory before generation")
   .action(async (options) => {
     try {
       const configPath = sanitizePathOption(options.config, "config");
@@ -65,6 +67,13 @@ program
       console.log(chalk.bold.blue("\n🚀 MCP Code Generator\n"));
       console.log(chalk.gray(`Config: ${configPath}`));
       console.log(chalk.gray(`Output: ${outputPath}\n`));
+
+      // Clean output directory if requested
+      if (options.clean && existsSync(outputPath)) {
+        console.log(chalk.cyan("🧹 Cleaning output directory..."));
+        await rm(outputPath, { recursive: true, force: true });
+        console.log(chalk.green("✓ Output directory cleaned\n"));
+      }
 
       // Parse config
       console.log(chalk.cyan("📝 Parsing configuration..."));

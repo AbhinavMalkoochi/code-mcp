@@ -62,10 +62,12 @@ const StdioServerSchema = z
       .max(MAX_ARGS, {
         message: `Too many arguments (max ${MAX_ARGS})`,
       }),
+    env: z.record(z.string()).optional(),
   })
   .transform((value) => ({
     ...value,
     args: [...value.args],
+    env: value.env ? { ...value.env } : undefined,
   }));
 
 const MCPConfigSchema = z.object({
