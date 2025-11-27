@@ -48,6 +48,26 @@ The config file tells the generator which MCP servers to connect to. Each server
 
 Server names can contain letters, numbers, dots, dashes, and underscores. They become the folder names in your generated code.
 
+### Environment Variables
+
+Pass environment variables to MCP servers using the `env` field. Use `${VAR_NAME}` to reference environment variables:
+
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+### Relative Paths
+
 For relative paths, use explicit notation:
 
 ```json
@@ -68,6 +88,7 @@ Generate code once:
 ```bash
 mcpcode generate
 mcpcode generate --config my-config.json --output generated/
+mcpcode generate --clean  # Remove output directory before generation
 ```
 
 Watch for config changes and auto-regenerate:
@@ -81,7 +102,8 @@ Available options:
 
 - `-c, --config <path>` - Path to config file (default: `mcp.config.json`)
 - `-o, --output <path>` - Output directory (default: `servers/`)
-- `-d, --debounce <ms>` - Watch debounce delay in milliseconds (default: `1000`)
+- `--clean` - Remove output directory before generation
+- `-d, --debounce <ms>` - Watch debounce delay (100-60000ms, default: `1000`)
 
 ## Run Without Installing
 
@@ -101,6 +123,12 @@ When you connect an agent to many MCP servers, loading all tool definitions upfr
 - Keep intermediate results private (they stay in the execution environment)
 
 Research from Anthropic shows this can reduce token usage by up to 98.7% compared to loading all tools upfront.
+
+## IDE Integration
+
+For AI coding assistants (Cursor, Claude Code, etc.), you can create rules files that instruct the LLM to use your generated `servers/` folder. This ensures the assistant leverages code execution instead of direct MCP calls. See the Anthropic blog on [Code execution with MCP](https://www.anthropic.com/research/code-execution-mcp) for more details.
+
+## Limitations
 
 Only STDIO transport is currently supported. Commands must exist on disk or be in your PATH. Relative paths must be explicit (start with `./`).
 
