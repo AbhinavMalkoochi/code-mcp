@@ -1,6 +1,6 @@
 {
   "name": "@abmalk/mcpcode",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Generate type-safe TypeScript wrappers for Model Context Protocol (MCP) tools. Connects to MCP servers via STDIO, discovers tools automatically, and generates clean, type-safe code.",
   "main": "dist/index.js",
   "type": "module",
