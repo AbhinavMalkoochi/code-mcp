@@ -6,18 +6,19 @@ alwaysApply: true
 
 # MCP Code Generator Rules
 
-When working with MCP tools in this project, use the generated TypeScript wrappers in `/tmp/test-git-servers/` instead of making direct MCP tool calls. This approach reduces token usage and improves type safety.
+When working with MCP tools in this project, use the generated TypeScript wrappers in `servers/` instead of making direct MCP tool calls. This approach reduces token usage and improves type safety.
 
 ## Available Servers
 
-- `git`
+- `github`
+- `fetch`
 
 ## How to Use
 
 1. **Initialize the runtime** before calling any tools:
 
 ```typescript
-import { initializeMCPRuntime, closeMCPRuntime } from './/tmp/test-git-servers/client.js';
+import { initializeMCPRuntime, closeMCPRuntime } from './servers/client.js';
 
 await initializeMCPRuntime();
 // ... use tools ...
@@ -27,15 +28,19 @@ await closeMCPRuntime();
 2. **Import and call tools** from server modules:
 
 ```typescript
-// git
-import * as git from './/tmp/test-git-servers/git/index.js';
-const result = await git.gitStatus({ /* params */ });
+// github
+import * as github from './servers/github/index.js';
+const result = await github.addCommentToPendingReview({ /* params */ });
+
+// fetch
+import * as fetch from './servers/fetch/index.js';
+const result = await fetch.fetch({ /* params */ });
 ```
 
 3. **Discover tools** using the search utilities:
 
 ```typescript
-import { searchTools, listServers, listTools } from './/tmp/test-git-servers/search.js';
+import { searchTools, listServers, listTools } from './servers/search.js';
 
 const servers = listServers();
 const gitTools = searchTools('commit');
