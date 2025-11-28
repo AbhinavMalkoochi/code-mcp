@@ -1,4 +1,4 @@
-import { mkdir, writeFile, readdir, rm } from "fs/promises";
+import { mkdir, writeFile, readFile, readdir, rm, appendFile } from "fs/promises";
 import { join } from "path";
 import { existsSync } from "fs";
 import { TypeGenerator } from "./typeGenerator.js";
@@ -45,6 +45,9 @@ export class CodeGenerator {
 
     // Generate cursor rules file for IDE integration
     await this.generateCursorRules(outputDir, toolsByServer);
+
+    // Update .gitignore to exclude generated servers folder
+    await this.updateGitignore(outputDir);
 
     console.log(chalk.green("\n✓ Code generation complete!\n"));
   }
@@ -300,11 +303,27 @@ export async function callMCPTool<TResponse = unknown>(
       }
     }
 
-    const searchCode = `/** Tool metadata for discovery */
+    const searchCode = `/** Detail level for tool information */
+export type DetailLevel = "name" | "summary" | "full";
+
+/** Tool metadata for discovery */
 export interface ToolInfo {
   server: string;
   name: string;
   fn: string;
+  description: string;
+}
+
+/** Minimal tool info (name only) */
+export interface ToolNameInfo {
+  server: string;
+  name: string;
+}
+
+/** Summary tool info (name + description) */
+export interface ToolSummaryInfo {
+  server: string;
+  name: string;
   description: string;
 }
 
@@ -318,27 +337,57 @@ export function listServers(): string[] {
   return [...new Set(toolRegistry.map(t => t.server))];
 }
 
-/** List tools for a specific server */
-export function listTools(serverName?: string): ToolInfo[] {
-  if (!serverName) {
-    return toolRegistry;
+/** List tools for a specific server with configurable detail level */
+export function listTools(serverName?: string, detail: DetailLevel = "full"): ToolInfo[] | ToolSummaryInfo[] | ToolNameInfo[] {
+  const tools = serverName 
+    ? toolRegistry.filter(t => t.server === serverName)
+    : toolRegistry;
+  
+  switch (detail) {
+    case "name":
+      return tools.map(t => ({ server: t.server, name: t.name }));
+    case "summary":
+      return tools.map(t => ({ server: t.server, name: t.name, description: t.description }));
+    case "full":
+    default:
+      return tools;
   }
-  return toolRegistry.filter(t => t.server === serverName);
 }
 
-/** Search tools by keyword (matches name or description) */
-export function searchTools(query: string): ToolInfo[] {
+/** 
+ * Search tools by keyword with configurable detail level
+ * Matches against name, description, or server name
+ */
+export function searchTools(query: string, detail: DetailLevel = "full"): ToolInfo[] | ToolSummaryInfo[] | ToolNameInfo[] {
   const q = query.toLowerCase();
-  return toolRegistry.filter(t =>
+  const matches = toolRegistry.filter(t =>
     t.name.toLowerCase().includes(q) ||
     t.description.toLowerCase().includes(q) ||
     t.server.toLowerCase().includes(q)
   );
+  
+  switch (detail) {
+    case "name":
+      return matches.map(t => ({ server: t.server, name: t.name }));
+    case "summary":
+      return matches.map(t => ({ server: t.server, name: t.name, description: t.description }));
+    case "full":
+    default:
+      return matches;
+  }
 }
 
 /** Get tool info by server and name */
 export function getTool(serverName: string, toolName: string): ToolInfo | undefined {
   return toolRegistry.find(t => t.server === serverName && t.name === toolName);
+}
+
+/** Get total tool count */
+export function getToolCount(serverName?: string): number {
+  if (serverName) {
+    return toolRegistry.filter(t => t.server === serverName).length;
+  }
+  return toolRegistry.length;
 }
 `;
 
@@ -431,6 +480,52 @@ const gitTools = searchTools('commit');
     console.log(
       chalk.gray(`Generated cursor rules: .cursor/rules/mcpcode.mdc`)
     );
+  }
+
+  async updateGitignore(outputDir: string): Promise<void> {
+    const gitignorePath = join(process.cwd(), ".gitignore");
+    
+    // Use relative path for gitignore - strip leading ./ and ensure trailing /
+    let relativePath = outputDir
+      .replace(/^\.\//, "")  // Remove leading ./
+      .replace(/^\/.*/, outputDir.split("/").pop() || outputDir); // For absolute paths, use just the folder name
+    
+    // If it's an absolute path outside cwd, just use the folder name
+    if (outputDir.startsWith("/") && !outputDir.startsWith(process.cwd())) {
+      relativePath = outputDir.split("/").filter(Boolean).pop() || "servers";
+    }
+    
+    const normalizedPath = relativePath.endsWith("/") ? relativePath : `${relativePath}/`;
+    const gitignoreEntry = `\n# MCP Code Generator - generated server wrappers\n${normalizedPath}\n`;
+
+    try {
+      if (existsSync(gitignorePath)) {
+        const content = await readFile(gitignorePath, "utf-8");
+        
+        // Check if the entry already exists (with or without trailing slash)
+        const pathWithoutSlash = normalizedPath.replace(/\/$/, "");
+        if (
+          content.includes(normalizedPath) ||
+          content.includes(pathWithoutSlash) ||
+          content.includes(`\n${normalizedPath}`) ||
+          content.includes(`\n${pathWithoutSlash}`)
+        ) {
+          return; // Already in .gitignore
+        }
+
+        // Append to existing .gitignore
+        await appendFile(gitignorePath, gitignoreEntry);
+        console.log(chalk.gray(`Updated .gitignore to exclude ${normalizedPath}`));
+      } else {
+        // Create new .gitignore
+        await writeFile(gitignorePath, gitignoreEntry.trim() + "\n", "utf-8");
+        console.log(chalk.gray(`Created .gitignore with ${normalizedPath}`));
+      }
+    } catch (error) {
+      // Non-fatal - just warn
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(chalk.yellow(`Warning: Could not update .gitignore: ${message}`));
+    }
   }
 
   private async ensureDir(dirPath: string): Promise<void> {
