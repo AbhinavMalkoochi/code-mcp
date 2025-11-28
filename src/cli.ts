@@ -105,8 +105,14 @@ program
         chalk.gray(`\nGenerated code is available in: ${outputPath}`)
       );
       console.log(
+        chalk.yellow(
+          "\n📦 Make sure @abmalk/mcpcode is installed in your project:"
+        )
+      );
+      console.log(chalk.cyan("  npm install @abmalk/mcpcode"));
+      console.log(
         chalk.gray(
-          "\nTo use the generated code, import from the server directories:"
+          "\nThen import and use the generated code:"
         )
       );
       console.log(
