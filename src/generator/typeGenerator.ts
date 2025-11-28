@@ -28,7 +28,8 @@ export class TypeGenerator {
   generateInterface(
     name: string,
     schema: JSONSchema,
-    indent: string = ""
+    indent: string = "",
+    addIndexSignature: boolean = false
   ): string {
     if (!schema || typeof schema !== "object") {
       return `${indent}export interface ${name} {\n${indent}  [key: string]: unknown;\n${indent}}`;
@@ -53,6 +54,10 @@ export class TypeGenerator {
       }
 
       interfaceCode += `${indent}  ${propName}${optional}: ${propType};\n`;
+    }
+
+    if (addIndexSignature) {
+      interfaceCode += `${indent}  [key: string]: unknown;\n`;
     }
 
     interfaceCode += `${indent}}`;
@@ -141,6 +146,6 @@ export class TypeGenerator {
 
   generateInputInterface(toolName: string, inputSchema: JSONSchema): string {
     const interfaceName = `${TypeGenerator.toPascalCase(toolName)}Input`;
-    return this.generateInterface(interfaceName, inputSchema);
+    return this.generateInterface(interfaceName, inputSchema, "", true);
   }
 }

@@ -1,0 +1,49 @@
+---
+description: MCP Code Generator - Use generated TypeScript wrappers instead of direct MCP tool calls
+globs: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]
+alwaysApply: true
+---
+
+# MCP Code Generator Rules
+
+When working with MCP tools in this project, use the generated TypeScript wrappers in `/tmp/test-git-servers/` instead of making direct MCP tool calls. This approach reduces token usage and improves type safety.
+
+## Available Servers
+
+- `git`
+
+## How to Use
+
+1. **Initialize the runtime** before calling any tools:
+
+```typescript
+import { initializeMCPRuntime, closeMCPRuntime } from './/tmp/test-git-servers/client.js';
+
+await initializeMCPRuntime();
+// ... use tools ...
+await closeMCPRuntime();
+```
+
+2. **Import and call tools** from server modules:
+
+```typescript
+// git
+import * as git from './/tmp/test-git-servers/git/index.js';
+const result = await git.gitStatus({ /* params */ });
+```
+
+3. **Discover tools** using the search utilities:
+
+```typescript
+import { searchTools, listServers, listTools } from './/tmp/test-git-servers/search.js';
+
+const servers = listServers();
+const gitTools = searchTools('commit');
+```
+
+## Benefits
+
+- **Type Safety**: All tool inputs and outputs are fully typed
+- **Token Efficiency**: Load only the tools you need instead of all definitions
+- **IDE Support**: Full autocomplete and type checking
+- **Progressive Discovery**: Browse tools via filesystem or search utilities

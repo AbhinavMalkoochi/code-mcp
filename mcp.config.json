@@ -1,8 +1,10 @@
 {
   "mcpServers": {
-    "git": {
-      "command": "uvx",
-      "args": ["mcp-server-git", "--repository", "."]
+    "github": {
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_TOKEN}"
+      }
     },
     "fetch": {
       "command": "uvx",

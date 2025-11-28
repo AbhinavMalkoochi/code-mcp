@@ -7,7 +7,11 @@ import { access } from "fs/promises";
 import { constants as fsConstants } from "fs";
 import { delimiter, isAbsolute, join, resolve } from "path";
 import { setPriority } from "node:os";
-import type { ServerConfig, StdioServerConfig, HttpServerConfig } from "../config/parser.js";
+import type {
+  ServerConfig,
+  StdioServerConfig,
+  HttpServerConfig,
+} from "../config/parser.js";
 import { isStdioConfig, isHttpConfig } from "../config/parser.js";
 import { ConnectionError } from "../errors.js";
 
@@ -205,7 +209,7 @@ export class MCPClient {
           `MCP client for "${this.serverName}" is already connected`
         );
       }
-      
+
       if (isStdioConfig(config)) {
         await this.connectStdio(config);
       } else if (isHttpConfig(config)) {
@@ -323,7 +327,7 @@ export class MCPClient {
     }
 
     const url = new URL(config.url);
-    
+
     // Process headers, expanding ${VAR} references
     const headers: Record<string, string> = {};
     if (config.headers) {
@@ -336,7 +340,7 @@ export class MCPClient {
 
     const hasHeaders = Object.keys(headers).length > 0;
     let transport: SSEClientTransport | StreamableHTTPClientTransport;
-    
+
     if (config.type === "sse") {
       transport = hasHeaders
         ? new SSEClientTransport(url, { requestInit: { headers } })
@@ -384,17 +388,29 @@ export class MCPClient {
 
   async listTools(): Promise<MCPTool[]> {
     try {
-      const response = await this.client.listTools();
-      return response.tools.map((tool): MCPTool => {
-        const mcpTool: MCPTool = {
-          name: tool.name,
-          inputSchema: (tool.inputSchema || {}) as Record<string, unknown>,
-        };
-        if (tool.description) {
-          mcpTool.description = tool.description;
+      const allTools: MCPTool[] = [];
+      let cursor: string | undefined;
+
+      do {
+        const response = await this.client.listTools(
+          cursor ? { cursor } : undefined
+        );
+
+        for (const tool of response.tools) {
+          const mcpTool: MCPTool = {
+            name: tool.name,
+            inputSchema: (tool.inputSchema || {}) as Record<string, unknown>,
+          };
+          if (tool.description) {
+            mcpTool.description = tool.description;
+          }
+          allTools.push(mcpTool);
         }
-        return mcpTool;
-      });
+
+        cursor = response.nextCursor;
+      } while (cursor);
+
+      return allTools;
     } catch (error) {
       if (error instanceof ConnectionError) {
         throw error;

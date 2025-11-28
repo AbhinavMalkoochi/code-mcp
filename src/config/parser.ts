@@ -12,17 +12,36 @@ const CONTROL_CHAR_PATTERN = /[\0\r\n]/;
 const PATH_SEPARATOR_PATTERN = /[\\/]/;
 const SERVER_NAME_PATTERN = /^[a-zA-Z0-9._-]+$/;
 
-// HTTP/SSE transport schema
-const HttpServerSchema = z.object({
+// URL validation schema (shared)
+const UrlSchema = z
+  .string()
+  .trim()
+  .min(1, { message: "URL must not be empty" })
+  .max(MAX_URL_LENGTH, {
+    message: `URL must be <= ${MAX_URL_LENGTH} characters`,
+  })
+  .url({ message: "Invalid URL format" });
+
+// HTTP/SSE transport schema with explicit type
+const ExplicitHttpServerSchema = z.object({
   type: z.enum(["http", "sse"]),
-  url: z
-    .string()
-    .trim()
-    .min(1, { message: "URL must not be empty" })
-    .max(MAX_URL_LENGTH, { message: `URL must be <= ${MAX_URL_LENGTH} characters` })
-    .url({ message: "Invalid URL format" }),
+  url: UrlSchema,
   headers: z.record(z.string()).optional(),
 });
+
+// URL-only config (auto-detect as http) - for configs like Context7 that omit type
+const UrlOnlyServerSchema = z
+  .object({
+    url: UrlSchema,
+    headers: z.record(z.string()).optional(),
+  })
+  .transform((val) => ({ ...val, type: "http" as const }));
+
+// Combined HTTP schema - try explicit first, then URL-only
+const HttpServerSchema = z.union([
+  ExplicitHttpServerSchema,
+  UrlOnlyServerSchema,
+]);
 
 const StdioServerSchema = z
   .object({
@@ -111,10 +130,8 @@ export function isStdioConfig(
   return "command" in config;
 }
 
-export function isHttpConfig(
-  config: ServerConfig
-): config is HttpServerConfig {
-  return "url" in config && (config.type === "http" || config.type === "sse");
+export function isHttpConfig(config: ServerConfig): config is HttpServerConfig {
+  return "url" in config;
 }
 
 export class ConfigParser {
@@ -144,8 +161,16 @@ export class ConfigParser {
       const messages = parsed.error.issues
         .map((issue) => {
           const path = issue.path.length > 0 ? `${issue.path.join(".")}: ` : "";
+
+          // Provide clearer messages for union type failures
+          if (issue.code === "invalid_union") {
+            const serverPath = issue.path.slice(0, 2).join(".");
+            return `${serverPath}: Server config must have either "command" (for STDIO) or "url" (for HTTP/SSE)`;
+          }
+
           return `${path}${issue.message}`;
         })
+        .filter((msg, idx, arr) => arr.indexOf(msg) === idx)
         .join("; ");
       if (messages.length > 0) {
         throw new ConfigError(`Invalid MCP configuration: ${messages}`);

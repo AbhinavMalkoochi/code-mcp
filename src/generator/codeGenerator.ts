@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "fs/promises";
+import { mkdir, writeFile, readdir, rm } from "fs/promises";
 import { join } from "path";
 import { existsSync } from "fs";
 import { TypeGenerator } from "./typeGenerator.js";
@@ -28,6 +28,10 @@ export class CodeGenerator {
     // Create output directory if it doesn't exist
     await this.ensureDir(outputDir);
 
+    // Clean up stale server directories before generating new code
+    const currentServers = new Set(toolsByServer.keys());
+    await this.cleanupStaleServers(outputDir, currentServers);
+
     // Generate code for each server
     for (const [serverName, tools] of toolsByServer.entries()) {
       await this.generateServer(outputDir, serverName, tools);
@@ -39,7 +43,37 @@ export class CodeGenerator {
     // Generate search file for tool discovery
     await this.generateSearchFile(outputDir, toolsByServer);
 
+    // Generate cursor rules file for IDE integration
+    await this.generateCursorRules(outputDir, toolsByServer);
+
     console.log(chalk.green("\n✓ Code generation complete!\n"));
+  }
+
+  async cleanupStaleServers(
+    outputDir: string,
+    currentServers: Set<string>
+  ): Promise<void> {
+    if (!existsSync(outputDir)) {
+      return;
+    }
+
+    try {
+      const entries = await readdir(outputDir, { withFileTypes: true });
+      const reservedFiles = new Set(["client.ts", "search.ts"]);
+
+      for (const entry of entries) {
+        if (entry.isDirectory() && !currentServers.has(entry.name)) {
+          const serverPath = join(outputDir, entry.name);
+          await rm(serverPath, { recursive: true, force: true });
+          console.log(chalk.yellow(`🗑  Removed stale server: ${entry.name}`));
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(
+        chalk.yellow(`Warning: Failed to cleanup stale servers: ${message}`)
+      );
+    }
   }
 
   async generateServer(
@@ -85,14 +119,15 @@ export class CodeGenerator {
       normalizedName
     )}Response`;
 
-    // Generate input interface
+    // Generate input interface using normalized name for consistency
     const inputInterface = this.typeGen.generateInputInterface(
-      tool.name,
+      normalizedName,
       tool.inputSchema
     );
 
-    // Generate response interface
-    const responseInterface = this.typeGen.generateResponseInterface(tool.name);
+    // Generate response interface using normalized name for consistency
+    const responseInterface =
+      this.typeGen.generateResponseInterface(normalizedName);
 
     // Generate function
     const description = tool.description
@@ -309,6 +344,93 @@ export function getTool(serverName: string, toolName: string): ToolInfo | undefi
 
     await this.writeFileSafe(searchPath, searchCode);
     console.log(chalk.gray(`Generated search utilities: search.ts`));
+  }
+
+  async generateCursorRules(
+    outputDir: string,
+    toolsByServer: Map<string, DiscoveredTool[]>
+  ): Promise<void> {
+    const cursorDir = join(process.cwd(), ".cursor", "rules");
+    await this.ensureDir(cursorDir);
+
+    const rulesPath = join(cursorDir, "mcpcode.mdc");
+
+    const serverList = [...toolsByServer.keys()]
+      .map((s) => `- \`${s}\``)
+      .join("\n");
+
+    const toolExamples = [...toolsByServer.entries()]
+      .slice(0, 2)
+      .map(([serverName, tools]) => {
+        const tool = tools[0];
+        if (!tool) return "";
+        const normalizedName = CodeGenerator.normalizeName(tool.name);
+        const functionName =
+          TypeGenerator.toCamelCase(normalizedName) || "tool";
+        return `// ${serverName}
+import * as ${TypeGenerator.toCamelCase(
+          serverName.replace(/[^a-zA-Z0-9]/g, "")
+        )} from './${outputDir}${serverName}/index.js';
+const result = await ${TypeGenerator.toCamelCase(
+          serverName.replace(/[^a-zA-Z0-9]/g, "")
+        )}.${functionName}({ /* params */ });`;
+      })
+      .filter(Boolean)
+      .join("\n\n");
+
+    const rulesContent = `---
+description: MCP Code Generator - Use generated TypeScript wrappers instead of direct MCP tool calls
+globs: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]
+alwaysApply: true
+---
+
+# MCP Code Generator Rules
+
+When working with MCP tools in this project, use the generated TypeScript wrappers in \`${outputDir}\` instead of making direct MCP tool calls. This approach reduces token usage and improves type safety.
+
+## Available Servers
+
+${serverList}
+
+## How to Use
+
+1. **Initialize the runtime** before calling any tools:
+
+\`\`\`typescript
+import { initializeMCPRuntime, closeMCPRuntime } from './${outputDir}client.js';
+
+await initializeMCPRuntime();
+// ... use tools ...
+await closeMCPRuntime();
+\`\`\`
+
+2. **Import and call tools** from server modules:
+
+\`\`\`typescript
+${toolExamples}
+\`\`\`
+
+3. **Discover tools** using the search utilities:
+
+\`\`\`typescript
+import { searchTools, listServers, listTools } from './${outputDir}search.js';
+
+const servers = listServers();
+const gitTools = searchTools('commit');
+\`\`\`
+
+## Benefits
+
+- **Type Safety**: All tool inputs and outputs are fully typed
+- **Token Efficiency**: Load only the tools you need instead of all definitions
+- **IDE Support**: Full autocomplete and type checking
+- **Progressive Discovery**: Browse tools via filesystem or search utilities
+`;
+
+    await this.writeFileSafe(rulesPath, rulesContent);
+    console.log(
+      chalk.gray(`Generated cursor rules: .cursor/rules/mcpcode.mdc`)
+    );
   }
 
   private async ensureDir(dirPath: string): Promise<void> {
