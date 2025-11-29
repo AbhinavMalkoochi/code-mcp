@@ -161,7 +161,49 @@ const tools = listTools("git");
 
 ## IDE Integration
 
-For AI coding assistants (Cursor, Claude Code, etc.), you can create rules files that instruct the LLM to use your generated `servers/` folder. This ensures the assistant leverages code execution instead of direct MCP calls. See the Anthropic blog on [Code execution with MCP](https://www.anthropic.com/research/code-execution-mcp) for more details.
+For AI coding assistants (Cursor, Claude Code, etc.), mcpcode automatically generates:
+
+- `.cursor/rules/mcpcode.mdc` - Rules file that instructs the LLM
+- `servers/run.ts` - A reusable runner file for executing MCP tools
+
+### How Agents Should Use MCP Tools
+
+The generated `servers/run.ts` file is the correct way to execute MCP tools:
+
+1. **Edit** `servers/run.ts` - modify the `runTask()` function
+2. **Run** `npx tsx servers/run.ts` - execute the tools
+
+```typescript
+// In servers/run.ts, edit runTask():
+async function runTask() {
+  const result = await servers.context7.resolveLibraryId({
+    libraryName: "react",
+  });
+  console.log(result);
+}
+```
+
+### Recommended Agent Prompt
+
+Add this to your system prompt or user rules to ensure agents use the correct pattern:
+
+```
+MCP Tool Usage Rules:
+1. To call MCP tools, EDIT the file servers/run.ts
+2. Put your tool calls inside the runTask() function
+3. Use the pre-imported `servers` object: servers.serverName.toolName()
+4. Run with: npx tsx servers/run.ts
+5. NEVER create new .mjs, .js, or .ts files
+6. NEVER import MCPClient or use @abmalk/mcpcode directly
+
+Example - edit servers/run.ts:
+  async function runTask() {
+    const result = await servers.github.listIssues({ owner: "org", repo: "repo" });
+    console.log(result);
+  }
+
+Then run: npx tsx servers/run.ts
+```
 
 ## Supported Transports
 

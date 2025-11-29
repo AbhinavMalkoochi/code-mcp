@@ -1,4 +1,11 @@
-import { mkdir, writeFile, readFile, readdir, rm, appendFile } from "fs/promises";
+import {
+  mkdir,
+  writeFile,
+  readFile,
+  readdir,
+  rm,
+  appendFile,
+} from "fs/promises";
 import { join } from "path";
 import { existsSync } from "fs";
 import { TypeGenerator } from "./typeGenerator.js";
@@ -42,6 +49,9 @@ export class CodeGenerator {
 
     // Generate search file for tool discovery
     await this.generateSearchFile(outputDir, toolsByServer);
+
+    // Generate the reusable runner file for agents
+    await this.generateRunnerFile(outputDir, toolsByServer);
 
     // Generate cursor rules file for IDE integration
     await this.generateCursorRules(outputDir, toolsByServer);
@@ -404,6 +414,103 @@ export function getToolCount(serverName?: string): number {
     console.log(chalk.gray(`Generated search utilities: search.ts`));
   }
 
+  async generateRunnerFile(
+    outputDir: string,
+    toolsByServer: Map<string, DiscoveredTool[]>
+  ): Promise<void> {
+    const runnerPath = join(outputDir, "run.ts");
+
+    // Generate dynamic imports for all servers
+    const serverImports = [...toolsByServer.keys()]
+      .map((serverName) => {
+        const varName = TypeGenerator.toCamelCase(
+          serverName.replace(/[^a-zA-Z0-9]/g, "")
+        );
+        return `import * as ${varName} from "./${serverName}/index.js";`;
+      })
+      .join("\n");
+
+    const serverExports = [...toolsByServer.keys()]
+      .map((serverName) => {
+        const varName = TypeGenerator.toCamelCase(
+          serverName.replace(/[^a-zA-Z0-9]/g, "")
+        );
+        return `  ${varName},`;
+      })
+      .join("\n");
+
+    const runnerCode = `/**
+ * MCP Tool Runner
+ * 
+ * This file provides a reusable way to execute MCP tools.
+ * AI agents should EDIT THIS FILE to add their tool calls, then run it.
+ * 
+ * Usage:
+ *   1. Edit the runTask() function below with your tool calls
+ *   2. Run: npx tsx servers/run.ts
+ * 
+ * DO NOT create new .mjs or .js files - edit this file instead!
+ */
+import { initializeMCPRuntime, closeMCPRuntime } from "./client.js";
+import { searchTools, listServers, listTools } from "./search.js";
+${serverImports}
+
+// Export all servers for easy access
+export const servers = {
+${serverExports}
+};
+
+// Export discovery utilities
+export { searchTools, listServers, listTools };
+
+/**
+ * EDIT THIS FUNCTION with your MCP tool calls.
+ * 
+ * Example:
+ *   const result = await servers.github.listIssues({ owner: "org", repo: "repo" });
+ *   console.log(result);
+ */
+async function runTask() {
+  // ============================================
+  // ADD YOUR TOOL CALLS HERE
+  // ============================================
+  
+  // Example: List available servers
+  console.log("Available servers:", listServers());
+  
+  // Example: Search for tools
+  // const tools = searchTools("your-keyword");
+  // console.log(tools);
+  
+  // Example: Call a tool
+  // const result = await servers.serverName.toolName({ param: "value" });
+  // console.log(result);
+  
+  // ============================================
+  // END OF TOOL CALLS
+  // ============================================
+}
+
+// Main execution
+async function main() {
+  try {
+    await initializeMCPRuntime();
+    await runTask();
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+    process.exit(1);
+  } finally {
+    await closeMCPRuntime();
+  }
+}
+
+main();
+`;
+
+    await this.writeFileSafe(runnerPath, runnerCode);
+    console.log(chalk.gray(`Generated runner file: run.ts`));
+  }
+
   async generateCursorRules(
     outputDir: string,
     toolsByServer: Map<string, DiscoveredTool[]>
@@ -437,52 +544,87 @@ const result = await ${TypeGenerator.toCamelCase(
       .join("\n\n");
 
     const rulesContent = `---
-description: MCP Code Generator - Use generated TypeScript wrappers instead of direct MCP tool calls
+description: MCP Code Generator - Use servers/run.ts for all MCP tool calls
 globs: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]
 alwaysApply: true
 ---
 
 # MCP Code Generator Rules
 
-When working with MCP tools in this project, use the generated TypeScript wrappers in \`${outputDir}\` instead of making direct MCP tool calls. This approach reduces token usage and improves type safety.
+This project has pre-generated TypeScript wrappers for MCP tools in \`${outputDir}\`.
+
+## HOW TO CALL MCP TOOLS
+
+**To execute MCP tools, edit \`${outputDir}run.ts\` and run it:**
+
+1. Open \`${outputDir}run.ts\`
+2. Edit the \`runTask()\` function with your tool calls
+3. Run: \`npx tsx ${outputDir}run.ts\`
+
+## CRITICAL RULES - READ CAREFULLY
+
+1. **NEVER create new script files** - Do not create .mjs, .js, or new .ts files for MCP calls
+2. **NEVER use MCPClient or raw SDK** - Do not import from \`@modelcontextprotocol/sdk\` or \`@abmalk/mcpcode\`
+3. **ALWAYS edit ${outputDir}run.ts** - This is the ONLY file you should modify for MCP tool execution
+4. **ALWAYS use the \`servers\` object** - Tools are accessed via \`servers.serverName.toolName()\`
 
 ## Available Servers
 
 ${serverList}
 
-## How to Use
-
-1. **Initialize the runtime** before calling any tools:
+## Correct Pattern: Edit ${outputDir}run.ts
 
 \`\`\`typescript
-import { initializeMCPRuntime, closeMCPRuntime } from './${outputDir}client.js';
+// In ${outputDir}run.ts, edit the runTask() function:
 
-await initializeMCPRuntime();
-// ... use tools ...
-await closeMCPRuntime();
+async function runTask() {
+  // Call tools using the servers object:
+  const result = await servers.context7.resolveLibraryId({ 
+    libraryName: "react" 
+  });
+  console.log(result);
+  
+  const docs = await servers.context7.getLibraryDocs({
+    context7CompatibleLibraryID: "/facebook/react",
+    topic: "hooks"
+  });
+  console.log(docs);
+}
 \`\`\`
 
-2. **Import and call tools** from server modules:
+Then run: \`npx tsx ${outputDir}run.ts\`
+
+## WRONG - Do NOT Do These
 
 \`\`\`typescript
-${toolExamples}
+// WRONG: Creating a new file like fetch_data.mjs
+// WRONG: import { MCPClient } from '@abmalk/mcpcode'
+// WRONG: const client = new MCPClient('context7')
+// WRONG: await client.callTool('resolve-library-id', {...})
 \`\`\`
 
-3. **Discover tools** using the search utilities:
+## Tool Discovery
+
+The \`servers\` object in run.ts has all available tools. You can also use:
 
 \`\`\`typescript
-import { searchTools, listServers, listTools } from './${outputDir}search.js';
-
-const servers = listServers();
-const gitTools = searchTools('commit');
+// In runTask():
+console.log(listServers());           // List all server names
+console.log(listTools('context7'));   // List tools for a server
+console.log(searchTools('issue'));    // Search tools by keyword
 \`\`\`
 
-## Benefits
+## File Structure
 
-- **Type Safety**: All tool inputs and outputs are fully typed
-- **Token Efficiency**: Load only the tools you need instead of all definitions
-- **IDE Support**: Full autocomplete and type checking
-- **Progressive Discovery**: Browse tools via filesystem or search utilities
+\`\`\`
+${outputDir}
+├── run.ts             # EDIT THIS FILE for MCP tool calls
+├── client.ts          # Runtime (do not edit)
+├── search.ts          # Discovery utilities (do not edit)
+└── server-name/       # Generated wrappers (do not edit)
+    ├── index.ts
+    └── toolName.ts
+\`\`\`
 `;
 
     await this.writeFileSafe(rulesPath, rulesContent);
@@ -493,24 +635,26 @@ const gitTools = searchTools('commit');
 
   async updateGitignore(outputDir: string): Promise<void> {
     const gitignorePath = join(process.cwd(), ".gitignore");
-    
+
     // Use relative path for gitignore - strip leading ./ and ensure trailing /
     let relativePath = outputDir
-      .replace(/^\.\//, "")  // Remove leading ./
+      .replace(/^\.\//, "") // Remove leading ./
       .replace(/^\/.*/, outputDir.split("/").pop() || outputDir); // For absolute paths, use just the folder name
-    
+
     // If it's an absolute path outside cwd, just use the folder name
     if (outputDir.startsWith("/") && !outputDir.startsWith(process.cwd())) {
       relativePath = outputDir.split("/").filter(Boolean).pop() || "servers";
     }
-    
-    const normalizedPath = relativePath.endsWith("/") ? relativePath : `${relativePath}/`;
+
+    const normalizedPath = relativePath.endsWith("/")
+      ? relativePath
+      : `${relativePath}/`;
     const gitignoreEntry = `\n# MCP Code Generator - generated server wrappers\n${normalizedPath}\n`;
 
     try {
       if (existsSync(gitignorePath)) {
         const content = await readFile(gitignorePath, "utf-8");
-        
+
         // Check if the entry already exists (with or without trailing slash)
         const pathWithoutSlash = normalizedPath.replace(/\/$/, "");
         if (
@@ -524,7 +668,9 @@ const gitTools = searchTools('commit');
 
         // Append to existing .gitignore
         await appendFile(gitignorePath, gitignoreEntry);
-        console.log(chalk.gray(`Updated .gitignore to exclude ${normalizedPath}`));
+        console.log(
+          chalk.gray(`Updated .gitignore to exclude ${normalizedPath}`)
+        );
       } else {
         // Create new .gitignore
         await writeFile(gitignorePath, gitignoreEntry.trim() + "\n", "utf-8");
@@ -533,7 +679,9 @@ const gitTools = searchTools('commit');
     } catch (error) {
       // Non-fatal - just warn
       const message = error instanceof Error ? error.message : String(error);
-      console.warn(chalk.yellow(`Warning: Could not update .gitignore: ${message}`));
+      console.warn(
+        chalk.yellow(`Warning: Could not update .gitignore: ${message}`)
+      );
     }
   }
 
