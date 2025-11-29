@@ -170,12 +170,19 @@ For AI coding assistants (Cursor, Claude Code, etc.), mcpcode automatically gene
 
 The generated `servers/run.ts` file is the correct way to execute MCP tools:
 
-1. **Edit** `servers/run.ts` - modify the `runTask()` function
-2. **Run** `npx tsx servers/run.ts` - execute the tools
+1. **Discover** tools using `listServers()`, `listTools()`, `searchTools()`
+2. **Edit** `servers/run.ts` - modify the `runTask()` function
+3. **Run** `npx tsx servers/run.ts` - execute the tools
 
 ```typescript
 // In servers/run.ts, edit runTask():
 async function runTask() {
+  // Discover tools (no need to read files manually)
+  console.log(listServers()); // ["context7", "github", ...]
+  console.log(listTools("context7")); // [{ name, description }]
+  console.log(searchTools("docs")); // Find tools by keyword
+
+  // Call tools
   const result = await servers.context7.resolveLibraryId({
     libraryName: "react",
   });
@@ -185,20 +192,26 @@ async function runTask() {
 
 ### Recommended Agent Prompt
 
-Add this to your system prompt or user rules to ensure agents use the correct pattern:
+Add this to your system prompt or user rules:
 
 ```
 MCP Tool Usage Rules:
 1. To call MCP tools, EDIT the file servers/run.ts
-2. Put your tool calls inside the runTask() function
-3. Use the pre-imported `servers` object: servers.serverName.toolName()
+2. Use discovery functions to find tools (don't read files manually):
+   - listServers() → list all server names
+   - listTools("serverName") → list tools with descriptions
+   - searchTools("keyword") → find tools by keyword
+3. Call tools via: servers.serverName.toolName({ params })
 4. Run with: npx tsx servers/run.ts
 5. NEVER create new .mjs, .js, or .ts files
-6. NEVER import MCPClient or use @abmalk/mcpcode directly
+6. NEVER import MCPClient or read individual tool files
 
 Example - edit servers/run.ts:
   async function runTask() {
-    const result = await servers.github.listIssues({ owner: "org", repo: "repo" });
+    // Discover
+    console.log(searchTools("library"));
+    // Call
+    const result = await servers.context7.getLibraryDocs({ ... });
     console.log(result);
   }
 

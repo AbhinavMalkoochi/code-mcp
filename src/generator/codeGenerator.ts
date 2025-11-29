@@ -439,55 +439,54 @@ export function getToolCount(serverName?: string): number {
       })
       .join("\n");
 
+    const serverList = [...toolsByServer.keys()].join(", ");
+
     const runnerCode = `/**
  * MCP Tool Runner
- * 
- * This file provides a reusable way to execute MCP tools.
- * AI agents should EDIT THIS FILE to add their tool calls, then run it.
- * 
- * Usage:
- *   1. Edit the runTask() function below with your tool calls
- *   2. Run: npx tsx servers/run.ts
- * 
- * DO NOT create new .mjs or .js files - edit this file instead!
+ *
+ * USAGE:
+ *   1. Edit the runTask() function below
+ *   2. Run: npx tsx ${outputDir}run.ts
+ *
+ * DISCOVERY (use these to find tools without reading files):
+ *   - listServers()              → ${JSON.stringify([...toolsByServer.keys()])}
+ *   - listTools("serverName")    → [{ name, description, ... }]
+ *   - searchTools("keyword")     → Find tools matching keyword
+ *
+ * CALLING TOOLS:
+ *   - servers.serverName.toolName({ param: "value" })
+ *
+ * DO NOT create new files - edit this file instead!
  */
 import { initializeMCPRuntime, closeMCPRuntime } from "./client.js";
 import { searchTools, listServers, listTools } from "./search.js";
 ${serverImports}
 
-// Export all servers for easy access
-export const servers = {
-${serverExports}
-};
+// All servers - use: servers.serverName.toolName({ params })
+export const servers = { ${serverList} };
 
-// Export discovery utilities
+// Discovery - use these instead of reading files manually
 export { searchTools, listServers, listTools };
 
 /**
- * EDIT THIS FUNCTION with your MCP tool calls.
- * 
- * Example:
- *   const result = await servers.github.listIssues({ owner: "org", repo: "repo" });
- *   console.log(result);
+ * EDIT THIS FUNCTION - Add your tool calls here
  */
 async function runTask() {
   // ============================================
-  // ADD YOUR TOOL CALLS HERE
+  // DISCOVER TOOLS (uncomment to explore):
+  // console.log("Servers:", listServers());
+  // console.log("Tools:", listTools("${
+    [...toolsByServer.keys()][0] || "serverName"
+  }"));
+  // console.log("Search:", searchTools("keyword"));
   // ============================================
-  
-  // Example: List available servers
+
+  // ============================================
+  // YOUR TOOL CALLS HERE:
+  // ============================================
+
   console.log("Available servers:", listServers());
-  
-  // Example: Search for tools
-  // const tools = searchTools("your-keyword");
-  // console.log(tools);
-  
-  // Example: Call a tool
-  // const result = await servers.serverName.toolName({ param: "value" });
-  // console.log(result);
-  
-  // ============================================
-  // END OF TOOL CALLS
+
   // ============================================
 }
 
