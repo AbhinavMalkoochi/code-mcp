@@ -109,6 +109,14 @@ mcpcode generate --config my-config.json --output generated/
 mcpcode generate --clean  # Remove output directory before generation
 ```
 
+Generate Claude Code skills (self-contained skill folders with TypeScript tools):
+
+```bash
+mcpcode skills
+mcpcode skills --config my-config.json --output .claude/skills/
+mcpcode skills --clean  # Remove existing MCP skills before generation
+```
+
 Watch for config changes and auto-regenerate:
 
 ```bash
@@ -119,9 +127,64 @@ mcpcode watch --debounce 2000
 Available options:
 
 - `-c, --config <path>` - Path to config file (default: `mcp.config.json`)
-- `-o, --output <path>` - Output directory (default: `servers/`)
+- `-o, --output <path>` - Output directory (default: `servers/` for generate, `.claude/skills/` for skills)
 - `--clean` - Remove output directory before generation
 - `-d, --debounce <ms>` - Watch debounce delay (100-60000ms, default: `1000`)
+
+## Claude Code Skills
+
+The `skills` command generates self-contained Claude Code skills from your MCP servers. Each skill folder includes:
+
+```
+.claude/skills/
+├── mcp-context7/
+│   ├── SKILL.md              # Discovery + documentation (YAML frontmatter)
+│   ├── index.ts              # Exports all actions
+│   ├── lib/
+│   │   └── client.ts         # MCP client wrapper
+│   └── actions/
+│       ├── resolveLibraryId.ts
+│       └── getLibraryDocs.ts
+└── mcp-tools-index/
+    └── SKILL.md              # Master index of all MCP tools
+```
+
+### How Skills Work
+
+Claude Code automatically discovers skills in `.claude/skills/`. When you ask Claude something that matches a skill's description, it loads and uses the skill.
+
+**Run tools directly:**
+
+```bash
+npx tsx .claude/skills/mcp-context7/actions/resolveLibraryId.ts '{"query":"react hooks","libraryName":"react"}'
+```
+
+**Import in your code:**
+
+```typescript
+import { resolveLibraryId } from './.claude/skills/mcp-context7/index.js';
+
+const result = await resolveLibraryId({
+  query: "react hooks",
+  libraryName: "react"
+});
+```
+
+### SKILL.md Format
+
+Each skill has a `SKILL.md` file with YAML frontmatter that Claude Code uses for discovery:
+
+```markdown
+---
+name: mcp-context7
+description: MCP tools for context7 - resolve library IDs and fetch documentation
+allowed-tools: Read, Bash(npx:*, node:*, tsx:*)
+---
+
+# context7 MCP Tools
+
+[Documentation and usage examples...]
+```
 
 ## Run Without Installing
 
