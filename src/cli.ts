@@ -9,6 +9,7 @@ import { dirname, join } from "path";
 import { ConfigParser } from "./config/parser.js";
 import { ToolDiscovery } from "./discovery/toolDiscovery.js";
 import { CodeGenerator } from "./generator/codeGenerator.js";
+import { SkillGenerator } from "./generator/skillGenerator.js";
 import { ConfigWatcher } from "./watcher/configWatcher.js";
 
 const PATH_CONTROL_PATTERN = /[\0\r\n]/;
@@ -118,6 +119,96 @@ program
       console.log(
         chalk.cyan(
           `  import * as myServer from './${options.output}my-server';`
+        )
+      );
+    } catch (error) {
+      console.error(
+        chalk.bold.red("\n❌ Error:"),
+        error instanceof Error ? error.message : error
+      );
+      process.exit(1);
+    }
+  });
+
+program
+  .command("skills")
+  .description("Generate Claude Code skills from MCP server configurations")
+  .option("-c, --config <path>", "Path to MCP config file", "mcp.config.json")
+  .option(
+    "-o, --output <path>",
+    "Output directory for generated skills",
+    ".claude/skills/"
+  )
+  .option("--clean", "Remove existing MCP skills before generation")
+  .action(async (options) => {
+    try {
+      const configPath = sanitizePathOption(options.config, "config");
+      const outputPath = sanitizePathOption(options.output, "output");
+
+      console.log(chalk.bold.blue("\n🧠 MCP Skills Generator\n"));
+      console.log(chalk.gray(`Config: ${configPath}`));
+      console.log(chalk.gray(`Output: ${outputPath}\n`));
+
+      // Clean output directory if requested
+      if (options.clean && existsSync(outputPath)) {
+        console.log(chalk.cyan("🧹 Cleaning output directory..."));
+        await rm(outputPath, { recursive: true, force: true });
+        console.log(chalk.green("✓ Output directory cleaned\n"));
+      }
+
+      // Parse config
+      console.log(chalk.cyan("📝 Parsing configuration..."));
+      const config = await ConfigParser.parseConfig(configPath);
+      const serverCount = Object.keys(config.mcpServers).length;
+      console.log(chalk.green(`✓ Found ${serverCount} server(s) in config\n`));
+
+      // Discover tools
+      const discovery = new ToolDiscovery(config);
+      const results = await discovery.discoverAll();
+
+      // Print summary
+      ToolDiscovery.printSummary(results);
+
+      // Check if any tools were discovered
+      const allTools = ToolDiscovery.flattenTools(results);
+      if (allTools.length === 0) {
+        console.log(
+          chalk.yellow("⚠ No tools discovered. Nothing to generate.")
+        );
+        process.exit(0);
+      }
+
+      // Generate skills
+      const generator = new SkillGenerator();
+      const toolsByServer = CodeGenerator.groupToolsByServer(allTools);
+      await generator.generateAll(toolsByServer, {
+        outputDir: outputPath,
+        configPath: configPath,
+      });
+
+      console.log(chalk.bold.green("✅ Success!"));
+      console.log(
+        chalk.gray(`\nGenerated skills are available in: ${outputPath}`)
+      );
+      console.log(
+        chalk.yellow(
+          "\n📦 Make sure @abmalk/mcpcode is installed in your project:"
+        )
+      );
+      console.log(chalk.cyan("  npm install @abmalk/mcpcode"));
+      console.log(
+        chalk.gray(
+          "\nClaude Code will automatically discover these skills."
+        )
+      );
+      console.log(
+        chalk.gray(
+          "You can also run tools directly:"
+        )
+      );
+      console.log(
+        chalk.cyan(
+          `  npx tsx ${outputPath}mcp-<server>/actions/<tool>.ts '{"param": "value"}'`
         )
       );
     } catch (error) {
